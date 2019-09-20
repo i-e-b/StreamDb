@@ -1,0 +1,38 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29306.81
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "StreamDb", "src\StreamDb\StreamDb.csproj", "{C64D3A0B-26AC-41B2-ACF5-6011EC75158B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "_Info", "_Info", "{5D111578-8214-4124-9C25-F8C1F66279C5}"
+	ProjectSection(SolutionItems) = preProject
+		.gitignore = .gitignore
+		LICENSE = LICENSE
+		README.md = README.md
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StreamDb.Tests", "src\StreamDb.Tests\StreamDb.Tests.csproj", "{FDEDD5A7-76B0-4110-8804-748BC6B97CA5}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C64D3A0B-26AC-41B2-ACF5-6011EC75158B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C64D3A0B-26AC-41B2-ACF5-6011EC75158B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C64D3A0B-26AC-41B2-ACF5-6011EC75158B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C64D3A0B-26AC-41B2-ACF5-6011EC75158B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FDEDD5A7-76B0-4110-8804-748BC6B97CA5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FDEDD5A7-76B0-4110-8804-748BC6B97CA5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FDEDD5A7-76B0-4110-8804-748BC6B97CA5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FDEDD5A7-76B0-4110-8804-748BC6B97CA5}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {676C3AB7-FB88-4C0F-A369-FDC28F30C2E8}
+	EndGlobalSection
+EndGlobal
