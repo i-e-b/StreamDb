@@ -21,17 +21,6 @@ namespace StreamDb.Tests
             }
         }
 
-        private string StreamToHex(Stream s)
-        {
-            s.Seek(0, SeekOrigin.Begin);
-            var sb = new StringBuilder();
-            int i;
-            while ((i = s.ReadByte()) > -1) {
-                sb.Append(i.ToString("x2"));
-            }
-            return sb.ToString();
-        }
-
         [Test]
         public void can_open_an_existing_database_from_a_stream (){
             Assert.Fail("NYI");
@@ -49,5 +38,17 @@ namespace StreamDb.Tests
             Assert.Fail("NYI");
         }
 
+        
+
+        private string StreamToHex(Stream s)
+        {
+            s.Seek(0, SeekOrigin.Begin);
+            var sb = new StringBuilder();
+            int i;
+            while ((i = s.ReadByte()) > -1) {
+                sb.Append(i.ToString("x2"));
+            }
+            return sb.ToString();
+        }
     }
 }

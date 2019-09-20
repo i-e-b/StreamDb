@@ -16,7 +16,7 @@ namespace StreamDb.Internal
          *   - Data page list
          * maybe more, but see if we can cope with just this
          */
-        [NotNull]private InterlockBinaryStream _storage;
+        [NotNull]private readonly InterlockBinaryStream _storage;
 
         public PageTable([NotNull]Stream fs)
         {
