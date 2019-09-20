@@ -2,6 +2,7 @@
 namespace JetBrains.Annotations
 {
     using System;
+
     /// <summary>Marked element could be <c>null</c></summary>
     [AttributeUsage(AttributeTargets.All)] internal sealed class CanBeNullAttribute : Attribute { }
     /// <summary>Marked element could never be <c>null</c></summary>

@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 using JetBrains.Annotations;
 
-namespace StreamDb
+namespace StreamDb.Internal
 {
     /// <summary>
     /// Provides Path->ID indexing

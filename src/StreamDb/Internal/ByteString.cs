@@ -1,6 +1,6 @@
 ﻿using System.Text;
 
-namespace StreamDb
+namespace StreamDb.Internal
 {
     public class ByteString : IByteSerialisable {
         private string _str;
@@ -10,13 +10,13 @@ namespace StreamDb
         /// <inheritdoc />
         public byte[] ToBytes() {
             if (_str == null) return new byte[0];
-            return Encoding.UTF8.GetBytes(_str);
+            return Encoding.UTF8?.GetBytes(_str);
         }
 
         /// <inheritdoc />
         public void FromBytes(byte[] source) {
             if (source == null) return;
-            _str = Encoding.UTF8.GetString(source);
+            _str = Encoding.UTF8?.GetString(source);
         }
 
         public static implicit operator ByteString(string other){ return Wrap(other); }

@@ -1,4 +1,4 @@
-﻿namespace StreamDb
+﻿namespace StreamDb.Internal
 {
     /// <summary>
     /// Interface for classes that can serialise to/from bytes

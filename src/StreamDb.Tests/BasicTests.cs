@@ -1,5 +1,8 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
+using System.Text;
 using NUnit.Framework;
+// ReSharper disable PossibleNullReferenceException
 
 namespace StreamDb.Tests
 {
@@ -11,8 +14,22 @@ namespace StreamDb.Tests
             using (var ms = new MemoryStream())
             {
                 var subject = Database.TryConnect(ms);
+
+                Console.WriteLine(StreamToHex(ms));
+
+                Assert.That(ms.Length, Is.GreaterThan(0), "Stream was not populated");
             }
-            Assert.Fail("NYI");
+        }
+
+        private string StreamToHex(Stream s)
+        {
+            s.Seek(0, SeekOrigin.Begin);
+            var sb = new StringBuilder();
+            int i;
+            while ((i = s.ReadByte()) > -1) {
+                sb.Append(i.ToString("x2"));
+            }
+            return sb.ToString();
         }
 
         [Test]

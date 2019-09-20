@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace StreamDb
+namespace StreamDb.Internal
 {
     public class SerialGuid : IByteSerialisable {
         internal Guid _guid;

@@ -24,6 +24,7 @@ A minimalist database that uses only Streams as storage, and can survive power l
 
 * Any kind of advanced querying, searching, etc.
 * Be the fastest / smallest / anything-est.
+* (De)Serialisation. Users should provide byte streams, and will get byte streams back.
 
 
 

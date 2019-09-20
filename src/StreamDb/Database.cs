@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using JetBrains.Annotations;
+using StreamDb.Internal;
 
 namespace StreamDb
 {
@@ -10,12 +11,15 @@ namespace StreamDb
     public class Database : IDisposable
     {
         [NotNull]   private readonly Stream       _fs;
+        [NotNull]   private readonly PageTable    _pages;
         [CanBeNull] private PathIndex<SerialGuid> _pathIndexCache;
 
         private Database(Stream fs)
         {
             _fs = fs ?? throw new ArgumentNullException(nameof(fs));
+            _pages = new PageTable(_fs);
         }
+
         /// <summary>
         /// Open a connection to a datastore by seekable stream.
         /// Throws an exception if the stream does not support seeking and reading.
@@ -29,6 +33,7 @@ namespace StreamDb
 
             if (storage.Length == 0)
             {
+                if (!storage.CanWrite) throw new ArgumentException("Attempted to initialise a read-only stream", nameof(storage));
                 storage.Seek(0, SeekOrigin.Begin);
             }
 
