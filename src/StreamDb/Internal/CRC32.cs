@@ -2,7 +2,6 @@
 
 namespace StreamDb.Internal
 {
-
     public static class Crc32
     {
         public const uint DefaultPolynomial = 0xedb88320;
