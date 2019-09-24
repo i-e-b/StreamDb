@@ -6,12 +6,12 @@ namespace StreamDb.Internal.DbStructure
 {
     /// <summary>
     /// Represents a generalised page in the DB.
-    /// At the moment these are fixed to 4kb data + headers
+    /// At the moment these are fixed to 4kb for data + headers
     /// </summary>
     public class Page : IByteSerialisable {
 
-        public const int PageRawSize = 41041; // 4k data, 35 bytes of header
-        public const int PageDataCapacity = 4096; // 4k data
+        public const int PageRawSize = 4096; // 4k data, to fit in a typical VM page
+        public const int PageDataCapacity = 4061; // 4k data - 35 bytes of header
 
         /// <summary> Special ID for the root page / root document of the database </summary>
         public static readonly Guid RootDocumentGuid = new Guid(new byte[] { 127, 127, 127, 127, 127, 127, 127, 127, 0, 0, 0, 0, 0, 0, 0, 0 });

@@ -1,20 +1,31 @@
 ﻿using System;
 using System.IO;
 using JetBrains.Annotations;
-using StreamDb.Internal;
 using StreamDb.Internal.DbStructure;
 using StreamDb.Internal.Support;
 
 namespace StreamDb
 {
     /// <summary>
-    /// This is the entry point to the data storage
+    /// This is the entry point to the data storage. Access the database through the methods here.
     /// </summary>
+    /// <remarks>
+    /// The idea behind the DB is:
+    /// 1. All documents have a single unique DocID (guid). This is assigned by the DB engine.
+    /// 2. Each document may be connected to as many 'paths' as needed. These are arbitrary strings.
+    ///
+    /// The database is optimised for many more reads than writes, and rare deletes.
+    /// The upper limit of individual document size is determined by internal counters. Currently this is 256 MB.
+    /// The overall database storage limit is determined by pageID limit (2147483647) times page data capacity (4061 bytes); this is 8000 GB
+    ///
+    /// The database is designed to allow for rapid connect/disconnect cycles to support multiple access.
+    /// It should also be 100% thread safe within a single process.
+    /// </remarks>
     public class Database : IDisposable
     {
         [NotNull]   private readonly Stream       _fs;
         [NotNull]   private readonly PageTable    _pages;
-        [CanBeNull] private PathIndex<SerialGuid> _pathIndexCache;
+        [CanBeNull] private PathIndex<SerialGuid> _pathIndexCache; // we cache this on first lookup?
 
         private Database(Stream fs)
         {

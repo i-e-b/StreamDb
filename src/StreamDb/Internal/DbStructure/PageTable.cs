@@ -5,6 +5,14 @@ using StreamDb.Internal.Support;
 
 namespace StreamDb.Internal.DbStructure
 {
+    /// <summary>
+    /// This is the core of the database format.
+    /// Our database starts with a root page that links to:
+    ///  - an index page chain
+    ///  - a path lookup chain
+    ///  - a free page chain
+    /// Occupied document data pages are not listed in the root, these are reachable from the index pages.
+    /// </summary>
     public class PageTable
     {
         /// <summary> A magic number we use to recognise our database format </summary>

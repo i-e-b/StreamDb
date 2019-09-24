@@ -53,7 +53,8 @@ namespace StreamDb.Internal.DbStructure
         /*
 
             Layout: [ Doc Guid (16 bytes) | PageLink[0] (5 bytes) | PageLink[1] (5 bytes) ] --> 26 bytes
-            We can fit 157 in a 4k page. Gives us 6 ranks (126 entries)
+            We can fit 157 in a 4k page. Gives us 6 ranks (126 entries) -> 3276 bytes
+            Our pages are currently 4061 bytes, so we have plenty of spare space if we can find useful metadata to store.
 
             We assume but don't store a root page with guid {127,127...,127}. The first two entries are 'left' and 'right' on the second level.
 
