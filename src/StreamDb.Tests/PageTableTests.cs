@@ -2,6 +2,8 @@
 using System.Text;
 using NUnit.Framework;
 using StreamDb.Internal;
+using StreamDb.Internal.DbStructure;
+
 // ReSharper disable PossibleNullReferenceException
 
 namespace StreamDb.Tests

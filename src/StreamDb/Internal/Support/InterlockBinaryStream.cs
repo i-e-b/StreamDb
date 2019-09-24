@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
 
-namespace StreamDb.Internal
+namespace StreamDb.Internal.Support
 {
     /// <summary>
     /// Provides thread-locked access to a stream, as either a BinaryReader or BinaryWriter

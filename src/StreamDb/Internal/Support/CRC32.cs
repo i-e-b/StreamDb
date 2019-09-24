@@ -1,6 +1,6 @@
 ﻿using JetBrains.Annotations;
 
-namespace StreamDb.Internal
+namespace StreamDb.Internal.Support
 {
     public static class Crc32
     {

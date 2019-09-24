@@ -1,7 +1,8 @@
 ﻿using System;
 using JetBrains.Annotations;
+using StreamDb.Internal.Support;
 
-namespace StreamDb.Internal
+namespace StreamDb.Internal.DbStructure
 {
     /// <summary>
     /// Represents a generalised page in the DB.

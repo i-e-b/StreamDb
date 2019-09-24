@@ -2,6 +2,8 @@
 using System.Diagnostics;
 using NUnit.Framework;
 using StreamDb.Internal;
+using StreamDb.Internal.DbStructure;
+
 // ReSharper disable PossibleNullReferenceException
 
 namespace StreamDb.Tests
@@ -35,9 +37,10 @@ namespace StreamDb.Tests
 
         [Test]
         public void when_inserting_and_a_space_cant_be_found_we_get_a_failure_result () {
-            // no space to insert means add a new index page
-
-            // Plan: add a whole load of entries, then measure an insert
+            // when an insert fails, we expect the caller to try a different index page.
+            // it does NOT mean the index is full. The caller should try adding again with
+            // the next insert. We expect that the entire index-tree-chain is traversed
+            // before adding a new index page (if all return false)
             
             var subject = new IndexPage();
             int i;
@@ -55,12 +58,13 @@ namespace StreamDb.Tests
         public void capacity_indication (){
             // We never expect to fill a page 100%.
             // This test run gives an indication of how the index behaves when filling
+            // worst case is IDs in order, where we will get 6 entries (4.7% full)
             
             var subject = new IndexPage();
             int i, j=0, k=0;
             var sw = new Stopwatch();
             sw.Start();
-            for (i = 0; i < 1000; i++)
+            for (i = 0; i < 1000; i++) // with 1'000'000 inserts, we hit 100% most of the time. With 1'000 we are around 80% most of the time
             {
                 var ok = subject.TryInsert(Guid.NewGuid(), 123);
                 if (ok) j++;

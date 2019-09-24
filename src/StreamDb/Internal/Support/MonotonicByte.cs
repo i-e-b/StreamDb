@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace StreamDb.Internal
+namespace StreamDb.Internal.Support
 {
     public class MonotonicByte : PartiallyOrdered, IByteSerialisable {
 

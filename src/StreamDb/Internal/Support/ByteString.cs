@@ -1,6 +1,6 @@
 ﻿using System.Text;
 
-namespace StreamDb.Internal
+namespace StreamDb.Internal.Support
 {
     public class ByteString : IByteSerialisable {
         private string _str;

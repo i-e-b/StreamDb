@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace StreamDb.Internal
+namespace StreamDb.Internal.Support
 {
     /// <summary>
     /// Derive from this type and implement `CompareTo(object)` to get

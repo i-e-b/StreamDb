@@ -1,4 +1,4 @@
-﻿namespace StreamDb.Internal
+﻿namespace StreamDb.Internal.DbStructure
 {
     /// <summary>
     /// What the page represents

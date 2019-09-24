@@ -1,8 +1,9 @@
 ﻿using System;
 using System.IO;
 using JetBrains.Annotations;
+using StreamDb.Internal.Support;
 
-namespace StreamDb.Internal
+namespace StreamDb.Internal.DbStructure
 {
     public class PageTable
     {

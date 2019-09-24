@@ -2,6 +2,9 @@
 using System.IO;
 using System.Text;
 using NUnit.Framework;
+using StreamDb.Internal;
+using StreamDb.Internal.Support;
+
 // ReSharper disable PossibleNullReferenceException
 
 namespace StreamDb.Tests
@@ -15,7 +18,7 @@ namespace StreamDb.Tests
             {
                 var subject = Database.TryConnect(ms);
 
-                Console.WriteLine(StreamToHex(ms));
+                Console.WriteLine(DataDiagnosis.StreamToHex(ms));
 
                 Assert.That(ms.Length, Is.GreaterThan(0), "Stream was not populated");
             }
@@ -38,17 +41,5 @@ namespace StreamDb.Tests
             Assert.Fail("NYI");
         }
 
-        
-
-        private string StreamToHex(Stream s)
-        {
-            s.Seek(0, SeekOrigin.Begin);
-            var sb = new StringBuilder();
-            int i;
-            while ((i = s.ReadByte()) > -1) {
-                sb.Append(i.ToString("x2"));
-            }
-            return sb.ToString();
-        }
     }
 }

@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using JetBrains.Annotations;
+using StreamDb.Internal.Support;
 
-namespace StreamDb.Internal
+namespace StreamDb.Internal.DbStructure
 {
     /// <summary>
     /// Provides Path->ID indexing
