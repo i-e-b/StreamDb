@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using JetBrains.Annotations;
 
 namespace StreamDb.Internal
 {
@@ -44,8 +45,9 @@ namespace StreamDb.Internal
         public static readonly Guid ZeroDocId = Guid.Empty;
 
 
-        private readonly PageLink[] _linkA, _linkB;
-        private readonly Guid[] _docIds;
+        [NotNull] private readonly PageLink[] _linkA;
+        [NotNull] private readonly PageLink[] _linkB;
+        [NotNull] private readonly Guid[] _docIds;
 
         /*
 
@@ -77,59 +79,22 @@ namespace StreamDb.Internal
         /// <returns>True if written, false if not</returns>
         public bool TryInsert(Guid docId, int pageId)
         {
-            // the implicit node:
-            var cmpNode = NeutralDocId;
-            int leftIdx = 0;
-            int rightIdx = 1;
+            var index = Find(docId);
+            if (index < 0 || index >= EntryCount) return false; // no space
 
+            if (_docIds[index] != ZeroDocId) throw new Exception("Tried to insert a duplicate document ID");
 
-            // loop start
-            for (int i = 0; i < 7; i++)
+            // found a space. Stick it in.
+            _linkA[index] = new PageLink
             {
-                var current = -1;
-                switch (cmpNode.CompareTo(docId))
-                {
-                    case SAME: throw new Exception("Tried to insert a duplicate document ID");
+                LastPage = pageId,
+                Version = new MonotonicByte() // start at zero
+            };
+            _linkB[index] = PageLink.InvalidLink();
+            _docIds[index] = docId;
+            return true;
 
-                    case LESS:
-                        // move left
-                        current = leftIdx;
-                        break;
-
-                    case GREATER:
-                        // move right
-                        current = rightIdx;
-                        break;
-
-                    default: throw new Exception("IndexTree.TryInsert: Unexpected case.");
-                }
-
-                // update next step pointers
-                leftIdx = (current * 2) + 2;
-                rightIdx = (current * 2) + 3;
-
-                // check we're in bounds
-                if (current < 0) throw new Exception("IndexTree.TryInsert: Logic error");
-                if (current >= EntryCount) return false;
-                
-                cmpNode = _docIds[current];
-                if (cmpNode == ZeroDocId)
-                {
-                    // found a space. Stick it in.
-                    _linkA[current] = new PageLink{
-                        LastPage = pageId,
-                        Version = new MonotonicByte() // start at zero
-                    };
-                    _linkB[current] = PageLink.InvalidLink();
-                    _docIds[current] = docId;
-                    return true;
-                }
-            }
-            // loop end
-
-            throw new Exception("IndexTree.TryInsert: Out of loops bounds. Exited due to safety check.");
         }
-
 
         /// <summary>
         /// Try to find a link in this index page. Returns true if found, false if not found.
@@ -141,7 +106,16 @@ namespace StreamDb.Internal
         public bool Search(Guid docId, out PageLink optionA, out PageLink optionB) {
             optionA = null;
             optionB = null;
-            return false;
+
+            var index = Find(docId);
+            if (index < 0 || index >= EntryCount) return false; // not found
+            if (_docIds[index] == ZeroDocId) return false; // not found
+            if (_docIds[index] != docId) throw new Exception("IndexPage.Search: Logic error");
+
+            optionA = _linkA[index];
+            optionB = _linkB[index];
+
+            return true;
         }
 
         /// <summary>
@@ -167,15 +141,76 @@ namespace StreamDb.Internal
                 {
                     w.Write(_docIds[i].ToByteArray());
 
-                    w.Write(_linkA[i].Version.Value);
-                    w.Write(_linkA[i].LastPage);
-
-                    w.Write(_linkB[i].Version.Value);
-                    w.Write(_linkB[i].LastPage);
+                    WriteLink(w, _linkA[i]);
+                    WriteLink(w, _linkB[i]);
                 }
 
                 ms.Seek(0, SeekOrigin.Begin);
                 return ms.ToArray();
+            }
+        }
+
+        /// <summary>
+        /// Find tries to find an entry index by a guid key. This is used in insert, search, update.
+        /// If no such entry exists, but there is a space for it, you will get a valid index whose
+        /// `_docIds` entry is Guid.Zero -- so always check.
+        /// </summary>
+        private int Find(Guid target) {
+            // the implicit node:
+            var cmpNode = NeutralDocId;
+            int leftIdx = 0;
+            int rightIdx = 1;
+
+            var current = -1;
+
+            // loop start
+            for (int i = 0; i < 7; i++)
+            {
+                switch (cmpNode.CompareTo(target))
+                {
+                    case SAME: return current;
+
+                    case LESS:
+                        // move left
+                        current = leftIdx;
+                        break;
+
+                    case GREATER:
+                        // move right
+                        current = rightIdx;
+                        break;
+
+                    default: throw new Exception("IndexTree.TryInsert: Unexpected case.");
+                }
+
+                // update next step pointers
+                leftIdx = (current * 2) + 2;
+                rightIdx = (current * 2) + 3;
+
+                // check we're in bounds
+                if (current < 0) throw new Exception("IndexTree.TryInsert: Logic error");
+                if (current >= EntryCount) return -1;
+                
+                cmpNode = _docIds[current];
+                if (cmpNode == ZeroDocId) { return current; } // empty space
+            }
+            // loop end
+
+            throw new Exception("IndexTree.TryInsert: Out of loops bounds. Exited due to safety check.");
+        }
+
+
+        private void WriteLink([NotNull]BinaryWriter w, PageLink link)
+        {
+            if (link != null)
+            {
+                w.Write(link.Version?.Value ?? 0);
+                w.Write(link.LastPage);
+            }
+            else
+            {
+                w.Write(0);
+                w.Write(-1);
             }
         }
 
@@ -190,7 +225,9 @@ namespace StreamDb.Internal
 
                 for (int i = 0; i < EntryCount; i++)
                 {
-                    _docIds[i] = new Guid(r.ReadBytes(16));
+                    var bytes = r.ReadBytes(16);
+                    if (bytes == null) throw new Exception("Failed to read doc guid");
+                    _docIds[i] = new Guid(bytes);
 
                     _linkA[i] = new PageLink{
                         Version = new MonotonicByte(r.ReadByte()),
