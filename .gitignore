@@ -7,6 +7,9 @@
 *.userosscache
 *.sln.docstates
 
+# Whiteboard files
+*.slick
+
 # Security files
 *.pfx
 

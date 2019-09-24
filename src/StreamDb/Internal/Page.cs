@@ -21,7 +21,7 @@ namespace StreamDb.Internal
 
         // data positions
         private const int DOC_ID = 0;
-        private const int PAGE_ID = 16;
+        private const int ROOT_PAGE_ID = 16;
         private const int PAGE_TYPE = 20;
         private const int DOC_SEQ = 21;
         private const int PREV_LNK = 23;
@@ -32,14 +32,14 @@ namespace StreamDb.Internal
         /*
          
        bits   bytes    Data layout:
-        128      16    [DocID:      GUID] <-- all pages belonging to a document share the same ID. The root page has a special 'HEADER_MAGIC' value plus 8 bytes of zero.
-        160      20    [PageID:    int32] <-- this increments for every page, and is equivalent to its position in memory as an array
-        168      21    [PageType:   byte] <-- what does the 'data' part represent?
-        184      23    [DocSeq:   uint16] <-- position in the document (uint16 limits documents to 256MB each)
-        216      27    [Prev:      int32] <-- previous page in the sequence ( -1 if this is the start )
-        248      31    [Next:      int32] <-- next page in the sequence ( -1 if this is the end )
-        280      35    [CRC32:    uint32] <-- CRC of the entire page (including headers)
-      32832    4104    [data: byte[4096]] <-- page contents (interpret based on PageType)
+        128      16    [DocID:        GUID] <-- all pages belonging to a document share the same ID. The root page has a special 'HEADER_MAGIC' value plus 8 bytes of zero.
+        160      20    [FirstPageId: int32] <-- link directly back to the first page of the page chain (all pages in a chain will have the same first page id)
+        168      21    [PageType:     byte] <-- what does the 'data' part represent?
+        184      23    [DocSeq:     uint16] <-- position in the document (uint16 limits documents to 256MB each. Used for recovery)
+        216      27    [Prev:        int32] <-- previous page in the sequence ( -1 if this is the start )
+        248      31    [Next:        int32] <-- next page in the sequence ( -1 if this is the end )
+        280      35    [CRC32:      uint32] <-- CRC of the entire page (including headers)
+      32832    4104    [data:   byte[4096]] <-- page contents (interpret based on PageType)
 
             */
 
@@ -52,11 +52,11 @@ namespace StreamDb.Internal
             set { Unslice(value.ToByteArray(), DOC_ID); }
         }
 
-        public int PageId { 
-            get { return BitConverter.ToInt32(_data, PAGE_ID); } 
-            set { Unslice(BitConverter.GetBytes(value), PAGE_ID); }
+        public int RootPageId { 
+            get { return BitConverter.ToInt32(_data, ROOT_PAGE_ID); } 
+            set { Unslice(BitConverter.GetBytes(value), ROOT_PAGE_ID); }
         }
-        
+
         public PageType PageType { 
             get { return (PageType)_data[PAGE_TYPE]; } 
             set { _data[PAGE_TYPE] = (byte)value; }

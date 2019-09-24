@@ -32,7 +32,7 @@ namespace StreamDb.Tests
 
             var page_n = subject.GetFreePage();
             Assert.That(page_n, Is.Not.Null, "Page not provided");
-            Assert.That(page_n.PageId, Is.EqualTo(2), "Unexpected page index");
+            Assert.That(page_n.RootPageId, Is.EqualTo(2), "Unexpected page index");
         }
 
         [Test]
@@ -46,7 +46,7 @@ namespace StreamDb.Tests
                 var testPage = creator.GetFreePage();
                 
 
-                pageId = testPage.PageId;
+                pageId = testPage.RootPageId;
                 testPage.Write(sample, 0, 0, sample.Length);
                 testPage.UpdateCRC();
                 creator.CommitPage(testPage);

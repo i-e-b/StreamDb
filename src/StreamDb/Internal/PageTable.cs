@@ -54,7 +54,7 @@ namespace StreamDb.Internal
                 w.Seek(0, SeekOrigin.Begin);
                 var root = new Page{
                     PageType = PageType.Root,
-                    PageId = 0,
+                    RootPageId = 0,
                     DocumentId = Page.RootDocumentGuid,
                     DocumentSequence = 0,
                     NextPageId = -1,
@@ -64,7 +64,7 @@ namespace StreamDb.Internal
 
                 var index1 = new Page{
                     PageType = PageType.Index,
-                    PageId = 1,
+                    RootPageId = 1,
                     DocumentId = Page.IndexTreeGuid,
                     DocumentSequence = 0,
                     NextPageId = -1,
@@ -121,7 +121,7 @@ namespace StreamDb.Internal
                     PageType = PageType.Invalid,
                     NextPageId = -1,
                     PrevPageId = -1,
-                    PageId = (int) pageCount, // very thread sensitive!
+                    RootPageId = (int) pageCount, // very thread sensitive!
                     DocumentSequence = 0,
                     DocumentId = Guid.Empty
                 };
@@ -142,7 +142,7 @@ namespace StreamDb.Internal
         public void CommitPage(Page page) {
             var w = _storage.AcquireWriter();
             try {
-                if (page == null || page.PageId < 0) throw new Exception("Attempted to commit an invalid page");
+                if (page == null || page.RootPageId < 0) throw new Exception("Attempted to commit an invalid page");
                 CommitPage(page, w);
             }
             finally {
@@ -158,7 +158,7 @@ namespace StreamDb.Internal
         {
             if (!page.ValidateCrc()) throw new Exception("Attempted to commit a corrupted page");
 
-            w.Seek(page.PageId * Page.PageRawSize, SeekOrigin.Begin);
+            w.Seek(page.RootPageId * Page.PageRawSize, SeekOrigin.Begin);
             var buf = page.ToBytes();
             w.Write(buf);
         }

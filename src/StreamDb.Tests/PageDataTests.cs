@@ -15,7 +15,7 @@ namespace StreamDb.Tests
                 DocumentId = Guid.NewGuid(),
                 DocumentSequence = 12,
                 NextPageId = -1,
-                PageId = 25,
+                RootPageId = 25,
                 PrevPageId = 20,
                 PageType = PageType.Data
             };
