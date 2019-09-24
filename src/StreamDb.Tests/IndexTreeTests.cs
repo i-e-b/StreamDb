@@ -55,8 +55,8 @@ namespace StreamDb.Tests
         }
 
         [Test]
-        public void capacity_indication (){
-            // We never expect to fill a page 100%.
+        public void  a_filled_index_serialises_to_less_than_a_pages_data_limit () {
+            // We rarely expect to fill a page 100%.
             // This test run gives an indication of how the index behaves when filling
             // worst case is IDs in order, where we will get 6 entries (4.7% full)
             
@@ -75,6 +75,10 @@ namespace StreamDb.Tests
             var capacity = j / 1.26;
 
             Console.WriteLine($"{i} attempts at random inserts. {j} succeeded ({capacity:0.#} % full), {k} failed; Took {sw.Elapsed}");
+
+            var bytes = subject.ToBytes();
+            Assert.That(bytes.Length, Is.LessThan(Page.PageDataCapacity));
+            Console.WriteLine($"Index page is {bytes.Length} bytes (out of {Page.PageDataCapacity})");
         }
 
         [Test]
@@ -105,6 +109,37 @@ namespace StreamDb.Tests
 
 
             var found = subject.Search(key, out var linkA, out var linkB);
+            Assert.That(found, Is.True, "Failed to find target");
+            
+            Assert.That(linkA.LastPage, Is.EqualTo(555), "Bad page info");
+            Assert.That(linkA.Version.Value, Is.EqualTo(0), "Bad version info");
+
+            Assert.That(linkB.LastPage, Is.EqualTo(-1), "New index has an old link!");
+        }
+        
+
+        [Test]
+        public void index_pages_can_be_read_after_serialisation (){
+            var original = new IndexPage();
+            var key = Guid.NewGuid();
+
+            // some 'wrong' keys (worst case occupancy is 6 out of 126)
+            for (int i = 0; i < 5; i++) { original.TryInsert(Guid.NewGuid(), 123); }
+
+            // insert the target
+            var ok = original.TryInsert(key, 555); 
+            Assert.That(ok, Is.True, "Failed to write target key");
+
+            // fill up with other wrong keys
+            for (int i = 0; i < 200; i++) { original.TryInsert(Guid.NewGuid(), 123); }
+
+            var bytes = original.ToBytes();
+
+            original = null;
+            var result = new IndexPage();
+            result.FromBytes(bytes);
+
+            var found = result.Search(key, out var linkA, out var linkB);
             Assert.That(found, Is.True, "Failed to find target");
             
             Assert.That(linkA.LastPage, Is.EqualTo(555), "Bad page info");

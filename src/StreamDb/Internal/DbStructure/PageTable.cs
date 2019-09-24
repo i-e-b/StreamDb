@@ -12,6 +12,7 @@ namespace StreamDb.Internal.DbStructure
     ///  - a path lookup chain
     ///  - a free page chain
     /// Occupied document data pages are not listed in the root, these are reachable from the index pages.
+    /// A valid page table never has less than 4 pages (pageID 0..3) -- so pageID 4 is the first valid page to allocate
     /// </summary>
     public class PageTable
     {

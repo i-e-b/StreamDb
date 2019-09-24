@@ -14,11 +14,13 @@ namespace StreamDb.Internal.DbStructure
         public const int PageDataCapacity = 4061; // 4k data - 35 bytes of header
 
         /// <summary> Special ID for the root page / root document of the database </summary>
-        public static readonly Guid RootDocumentGuid = new Guid(new byte[] { 127, 127, 127, 127, 127, 127, 127, 127, 0, 0, 0, 0, 0, 0, 0, 0 });
+        public static readonly Guid RootDocumentGuid = new Guid(new byte[] {0x57,0x2e,0xfe,0xed,0xfa,0xce,0xda,0x7a, 0, 0, 0, 0, 0, 0, 0, 0 }); // matches `HEADER_MAGIC` in PageTable.cs
         /// <summary> Special ID for the index tree document </summary>
         public static readonly Guid IndexTreeGuid    = new Guid(new byte[] { 127, 127, 127, 127, 127, 127, 127, 127, 1, 1, 1, 1, 1, 1, 1, 1 });
         /// <summary> Special ID for the path lookup document </summary>
         public static readonly Guid PathLookupGuid   = new Guid(new byte[] { 127, 127, 127, 127, 127, 127, 127, 127, 2, 2, 2, 2, 2, 2, 2, 2 });
+        /// <summary> Special ID for pages that have been deleted </summary>
+        public static readonly Guid FreePageGuid     = new Guid(new byte[] { 127, 127, 127, 127, 127, 127, 127, 127, 3, 3, 3, 3, 3, 3, 3, 3 });
 
         // data positions
         private const int DOC_ID = 0;

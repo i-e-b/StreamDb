@@ -277,12 +277,12 @@ namespace StreamDb.Internal.DbStructure
         {
             if (link != null)
             {
-                w.Write(link.Version?.Value ?? 0);
+                w.Write((byte)(link.Version?.Value ?? 0));
                 w.Write(link.LastPage);
             }
             else
             {
-                w.Write(0);
+                w.Write((byte)0);
                 w.Write(-1);
             }
         }

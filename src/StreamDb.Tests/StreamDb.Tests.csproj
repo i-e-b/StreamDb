@@ -48,6 +48,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BasicTests.cs" />
+    <Compile Include="FreeChainTests.cs" />
     <Compile Include="IndexTreeTests.cs" />
     <Compile Include="MonotonicByteTests.cs" />
     <Compile Include="PageDataTests.cs" />
