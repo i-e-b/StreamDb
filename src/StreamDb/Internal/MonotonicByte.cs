@@ -43,5 +43,15 @@ namespace StreamDb.Internal
         }
 
         public override int GetHashCode() { return 0x1437584b; }
+
+        /// <summary>
+        /// Get a new counter that is one version ahead of this one
+        /// </summary>
+        public MonotonicByte GetNext()
+        {
+            var next = new MonotonicByte(_value);
+            next.Increment();
+            return next;
+        }
     }
 }

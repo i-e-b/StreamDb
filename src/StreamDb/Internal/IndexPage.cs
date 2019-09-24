@@ -124,30 +124,54 @@ namespace StreamDb.Internal
         /// </summary>
         /// <param name="docId">ID of document to update</param>
         /// <param name="pageId">PageID of the LAST page in the new document chain to be inserted</param>
+        /// <param name="expiredPage">If an old value is lost, this is PageID. Otherwise -1</param>
         /// <remarks>If an existing chain is de-linked by this, all the pages should be added to the free list</remarks>
-        public bool Update(Guid docId, int pageId) {
-            return false;
-        }
+        public bool Update(Guid docId, int pageId, out int expiredPage) {
+            expiredPage = -1;
 
+            // find the entry to update
+            var index = Find(docId);
+            if (index < 0 || index >= EntryCount) return false; // not found
+            if (_docIds[index] == ZeroDocId) return false; // not found
+            if (_docIds[index] != docId) throw new Exception("IndexPage.Search: Logic error");
 
-        /// <inheritdoc />
-        public byte[] ToBytes()
-        {
-            using (var ms = new MemoryStream(PackedSize))
-            {
-                var w = new BinaryWriter(ms);
+            var optionA = _linkA[index];
+            var optionB = _linkB[index];
 
-                for (int i = 0; i < EntryCount; i++)
+            if (optionA?.Version == null || optionB?.Version == null) throw new Exception("IndexPage.Update: invalid option table");
+
+            if (optionB.LastPage < 0) {
+                // B has never been set
+                _linkB[index] = new PageLink
                 {
-                    w.Write(_docIds[i].ToByteArray());
-
-                    WriteLink(w, _linkA[i]);
-                    WriteLink(w, _linkB[i]);
-                }
-
-                ms.Seek(0, SeekOrigin.Begin);
-                return ms.ToArray();
+                    LastPage = pageId,
+                    Version = optionA.Version.GetNext()
+                };
+                return true;
             }
+
+            if (optionA.Version == optionB.Version) throw new Exception("IndexPage.Update: option table versions invalid");
+
+            if (optionA.Version > optionB.Version) {
+                // B is older. Replace it.
+                expiredPage = optionB.LastPage;
+                _linkB[index] = new PageLink
+                {
+                    LastPage = pageId,
+                    Version = optionA.Version.GetNext()
+                };
+                return true;
+            }
+
+            // A is older. Replace it.
+            expiredPage = optionA.LastPage;
+            _linkA[index] = new PageLink
+            {
+                LastPage = pageId,
+                Version = optionB.Version.GetNext()
+            };
+            return true;
+
         }
 
         /// <summary>
@@ -199,21 +223,6 @@ namespace StreamDb.Internal
             throw new Exception("IndexTree.TryInsert: Out of loops bounds. Exited due to safety check.");
         }
 
-
-        private void WriteLink([NotNull]BinaryWriter w, PageLink link)
-        {
-            if (link != null)
-            {
-                w.Write(link.Version?.Value ?? 0);
-                w.Write(link.LastPage);
-            }
-            else
-            {
-                w.Write(0);
-                w.Write(-1);
-            }
-        }
-
         /// <inheritdoc />
         public void FromBytes(byte[] source)
         {
@@ -241,5 +250,40 @@ namespace StreamDb.Internal
                 }
             }
         }
+        
+        /// <inheritdoc />
+        public byte[] ToBytes()
+        {
+            using (var ms = new MemoryStream(PackedSize))
+            {
+                var w = new BinaryWriter(ms);
+
+                for (int i = 0; i < EntryCount; i++)
+                {
+                    w.Write(_docIds[i].ToByteArray());
+
+                    WriteLink(w, _linkA[i]);
+                    WriteLink(w, _linkB[i]);
+                }
+
+                ms.Seek(0, SeekOrigin.Begin);
+                return ms.ToArray();
+            }
+        }
+
+        private void WriteLink([NotNull]BinaryWriter w, PageLink link)
+        {
+            if (link != null)
+            {
+                w.Write(link.Version?.Value ?? 0);
+                w.Write(link.LastPage);
+            }
+            else
+            {
+                w.Write(0);
+                w.Write(-1);
+            }
+        }
+
     }
 }
