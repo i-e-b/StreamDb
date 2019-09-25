@@ -47,9 +47,11 @@ namespace StreamDb.Tests
             using (var source = new MemoryStream()){
                 var creator = new PageTable(source);
                 var testPage = creator.GetFreePage();
-                
 
-                pageId = testPage.FirstPageId;
+                pageId = testPage.OriginalPageId;
+                testPage.FirstPageId = pageId;
+                testPage.PageType = PageType.Data;
+                testPage.DocumentId = Guid.NewGuid();
                 testPage.Write(sample, 0, 0, sample.Length);
                 testPage.UpdateCRC();
                 creator.CommitPage(testPage);
@@ -59,6 +61,7 @@ namespace StreamDb.Tests
             }
 
             using (var stored = new MemoryStream(raw)) {
+                stored.Seek(0, SeekOrigin.Begin);
                 var reader = new PageTable(stored);
 
                 var resultPage = reader.GetPage(pageId);
@@ -72,5 +75,6 @@ namespace StreamDb.Tests
                 Assert.That(finalStr, Is.EqualTo("Hello, world"));
             }
         }
+
     }
 }

@@ -58,8 +58,13 @@ namespace StreamDb.Internal.DbStructure
                 }
                 throw new Exception("This database is too heavily truncated to recover");
             }
-            // assume it is ok...
-            //ReadPageTable();
+            
+            
+            // Basic sanity tests
+            var root = ReadRoot();
+            if (!root.FreeListLink.TryGetLink(0, out _)) throw new Exception("Database free page list is damaged");
+            if (!root.IndexLink.TryGetLink(0, out _)) throw new Exception("Database index table is damaged");
+            if (!root.PathLookupLink.TryGetLink(0, out _)) throw new Exception("Database path lookup table is damaged");
         }
 
         private void InitialisePageTable()
@@ -239,10 +244,11 @@ namespace StreamDb.Internal.DbStructure
 
                     var p = new Page
                     {
+                        OriginalPageId = (int)pageCount, // very thread sensitive!
                         PageType = PageType.Invalid,
                         NextPageId = -1,
                         PrevPageId = -1,
-                        FirstPageId = (int)pageCount, // very thread sensitive!
+                        FirstPageId = (int)pageCount, // should update if chaining
                         DocumentSequence = 0,
                         DocumentId = Guid.Empty
                     };
@@ -265,7 +271,7 @@ namespace StreamDb.Internal.DbStructure
         /// This method is very thread sensitive
         /// </summary>
         public void CommitPage(Page page) {
-            if (page == null || page.FirstPageId < 0) throw new Exception("Attempted to commit an invalid page");
+            if (page == null || page.OriginalPageId < 0) throw new Exception("Attempted to commit an invalid page");
             if (!page.ValidateCrc()) throw new Exception("Attempted to commit a corrupted page");
 
             // TODO: remove from free list?
@@ -285,7 +291,7 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         private void CommitPage([NotNull]Page page, [NotNull]BinaryWriter w)
         {
-            w.Seek(page.FirstPageId * Page.PageRawSize, SeekOrigin.Begin);
+            w.Seek(page.OriginalPageId * Page.PageRawSize, SeekOrigin.Begin);
             var buf = page.ToBytes();
             w.Write(buf);
         }

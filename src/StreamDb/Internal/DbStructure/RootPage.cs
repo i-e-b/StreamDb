@@ -11,15 +11,15 @@ namespace StreamDb.Internal.DbStructure
     /// </summary>
     public class RootPage:IByteSerialisable
     {
-        [NotNull]private readonly VersionedLink _indexLink;
-        [NotNull]private readonly VersionedLink _freeListLink;
-        [NotNull]private readonly VersionedLink _pathLookupLink;
+        [NotNull]public readonly VersionedLink IndexLink;
+        [NotNull]public readonly VersionedLink FreeListLink;
+        [NotNull]public readonly VersionedLink PathLookupLink;
 
         public RootPage()
         {
-            _indexLink = new VersionedLink();
-            _freeListLink = new VersionedLink();
-            _pathLookupLink = new VersionedLink();
+            IndexLink = new VersionedLink();
+            FreeListLink = new VersionedLink();
+            PathLookupLink = new VersionedLink();
         }
 
 
@@ -32,9 +32,9 @@ namespace StreamDb.Internal.DbStructure
                 ms.Seek(0, SeekOrigin.Begin);
                 var r = new BinaryReader(ms);
 
-                _freeListLink.FromBytes(r.ReadBytes(VersionedLink.ByteSize));
-                _indexLink.FromBytes(r.ReadBytes(VersionedLink.ByteSize));
-                _pathLookupLink.FromBytes(r.ReadBytes(VersionedLink.ByteSize));
+                FreeListLink.FromBytes(r.ReadBytes(VersionedLink.ByteSize));
+                IndexLink.FromBytes(r.ReadBytes(VersionedLink.ByteSize));
+                PathLookupLink.FromBytes(r.ReadBytes(VersionedLink.ByteSize));
             }
         }
         
@@ -45,9 +45,9 @@ namespace StreamDb.Internal.DbStructure
             {
                 var w = new BinaryWriter(ms);
 
-                w.Write(_freeListLink.ToBytes());
-                w.Write(_indexLink.ToBytes());
-                w.Write(_pathLookupLink.ToBytes());
+                w.Write(FreeListLink.ToBytes());
+                w.Write(IndexLink.ToBytes());
+                w.Write(PathLookupLink.ToBytes());
 
                 ms.Seek(0, SeekOrigin.Begin);
                 return ms.ToArray() ?? throw new Exception();
@@ -58,23 +58,23 @@ namespace StreamDb.Internal.DbStructure
         /// Add a new pointer to the first page of the DocumentID index page list.
         /// This may replace earlier versions
         /// </summary>
-        public void AddIndex(int pageId, out int expired) { _indexLink.WriteNewLink(pageId, out expired); }
+        public void AddIndex(int pageId, out int expired) { IndexLink.WriteNewLink(pageId, out expired); }
 
         /// <summary>
         /// Add a new pointer to the first page of the PageId free page list.
         /// This may replace earlier versions
         /// </summary>
-        public void AddFreeList(int pageId, out int expired){ _freeListLink.WriteNewLink(pageId, out expired); }
+        public void AddFreeList(int pageId, out int expired){ FreeListLink.WriteNewLink(pageId, out expired); }
 
         /// <summary>
         /// Add a new pointer to the first page of the PageId free page list.
         /// This may replace earlier versions
         /// </summary>
-        public void AddPathLookup(int pageId, out int expired){ _pathLookupLink.WriteNewLink(pageId, out expired); }
+        public void AddPathLookup(int pageId, out int expired){ PathLookupLink.WriteNewLink(pageId, out expired); }
 
         public int GetFreeListPageId()
         {
-            if (!_freeListLink.TryGetLink(0, out var id)) return -1;
+            if (!FreeListLink.TryGetLink(0, out var id)) return -1;
             return id;
         }
     }

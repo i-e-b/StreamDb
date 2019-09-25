@@ -29,8 +29,13 @@ namespace StreamDb.Internal.Support
             pageId = -1;
             if (revision > 1 || revision < 0) return false; // not supported
             if (_linkA.PageId <= 0 && _linkB.PageId <= 0) return false; // no versions
-            if (_linkA.Version == _linkB.Version) throw new Exception("VersionedLink.TryGetLink: option table versions invalid");
 
+            if (_linkB.PageId < 0) { // B hasn't been written
+                pageId = (revision == 0) ? _linkA.PageId : _linkB.PageId;
+                return pageId > 0;
+            }
+
+            if (_linkA.Version == _linkB.Version) throw new Exception("VersionedLink.TryGetLink: option table versions invalid");
 
             if (_linkA.Version > _linkB.Version) // B is older
             {
@@ -44,6 +49,16 @@ namespace StreamDb.Internal.Support
 
         public void WriteNewLink(int pageId, out int expiredPage) {
             expiredPage = -1;
+
+            if (_linkA.PageId < 0) {
+                // A has never been set
+                _linkA = new PageLink
+                {
+                    PageId = pageId,
+                    Version = new MonotonicByte(0)
+                };
+                return;
+            }
 
             if (_linkB.PageId < 0) {
                 // B has never been set
