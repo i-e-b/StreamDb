@@ -25,7 +25,6 @@ namespace StreamDb
     {
         [NotNull]   private readonly Stream       _fs;
         [NotNull]   private readonly PageTable    _pages;
-        [CanBeNull] private PathIndex<SerialGuid> _pathIndexCache; // we cache this on first lookup?
 
         private Database(Stream fs)
         {

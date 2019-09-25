@@ -120,6 +120,10 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         public bool Dirty { get; set; }
 
+        /// <summary>
+        /// Page ID that this instance was loaded from. This is not written to storage
+        /// </summary>
+        public int OriginalPageId { get; set; }
 
         [NotNull]private byte[] Slice(int start, int length) {
             var result = new byte[length];
@@ -196,6 +200,12 @@ namespace StreamDb.Internal.DbStructure
             {
                 buffer[i + bufferOffset] = _data[PAGE_DATA + pageOffset + i];
             }
+        }
+
+        public byte[] GetData()
+        {
+            // TODO: split the header and data arrays internally to reduce copying?
+            return Slice(PAGE_DATA, PageDataCapacity);
         }
     }
 }

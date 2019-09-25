@@ -72,5 +72,10 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         public void AddPathLookup(int pageId, out int expired){ _pathLookupLink.WriteNewLink(pageId, out expired); }
 
+        public int GetFreeListPageId()
+        {
+            if (!_freeListLink.TryGetLink(0, out var id)) return -1;
+            return id;
+        }
     }
 }

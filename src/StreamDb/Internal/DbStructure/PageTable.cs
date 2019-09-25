@@ -27,6 +27,11 @@ namespace StreamDb.Internal.DbStructure
          * maybe more, but see if we can cope with just this
          */
         [NotNull]private readonly InterlockBinaryStream _storage;
+        
+        /// <summary>
+        /// A lock around getting a new page
+        /// </summary>
+        [NotNull]private readonly object _newPageLock = new object();
 
         public PageTable([NotNull]Stream fs)
         {
@@ -105,7 +110,7 @@ namespace StreamDb.Internal.DbStructure
                 DocumentSequence = 0,
                 DocumentId = Page.PathLookupGuid,
                 Dirty = true,
-                FirstPageId = 2
+                FirstPageId = 3
             };
             var bytes = path0.ToBytes();
             page.Write(bytes, 0, 0, bytes.Length);
@@ -185,39 +190,73 @@ namespace StreamDb.Internal.DbStructure
                 var result = new Page();
                 reader.BaseStream.Seek(byteOffset, SeekOrigin.Begin);
                 result.FromBytes(reader.ReadBytes(Page.PageRawSize));
+                result.OriginalPageId = pageId;
                 return result;
             } finally {
                 _storage.Release(ref reader);
             }
         }
 
+        [NotNull]private RootPage ReadRoot() {
+            // TODO: avoid re-reading every time
+            var page = GetPage(0);
+            if (page == null) throw new Exception("PageTable.ReadRoot: Failed to read root page");
+            if (!page.ValidateCrc()) throw new Exception("PageTable.ReadRoot: Root entry failed CRC check. Must recover database.");
+            var final = new RootPage();
+            final.FromBytes(page.GetData());
+            return final;
+        }
+
+        [NotNull]private FreeListPage GetFreePageList() {
+            // TODO: avoid re-reading every time
+            var root = ReadRoot();
+            var page = GetPage(root.GetFreeListPageId());
+            if (page == null) throw new Exception("PageTable.ReadRoot: Failed to free list page");
+            var free = new FreeListPage();
+            free.FromBytes(page.GetData());
+            return free;
+        }
+
         /// <summary>
         /// Get a free page, either by reuse or by allocating a new page.
-        /// The returned page will have a correct PageID, but will need other headers reset, and a new CRC before being committed
+        /// The returned page will have a correct OriginalPageID, but will need other headers reset, and a new CRC before being committed
         /// </summary>
         public Page GetFreePage()
         {
-            // TODO: read indexes to get a new page, rather than just making one.
-            var w = _storage.AcquireWriter();
-            try {
-                var stream = w.BaseStream ?? throw new Exception("Lost connection to base stream");
-                var pageCount = stream.Length / Page.PageRawSize;
+            // try to re-use a page:
+            var freeList = GetFreePageList();
+            var pageId = freeList.GetNext();
+            if (pageId > 0) { return GetPage(pageId); }
 
-                var p = new Page {
-                    PageType = PageType.Invalid,
-                    NextPageId = -1,
-                    PrevPageId = -1,
-                    FirstPageId = (int) pageCount, // very thread sensitive!
-                    DocumentSequence = 0,
-                    DocumentId = Guid.Empty
-                };
-                p.UpdateCRC();
+            // none available. Write a new one:
+            lock (_newPageLock)
+            {
+                var w = _storage.AcquireWriter();
+                try
+                {
+                    var stream = w.BaseStream ?? throw new Exception("Lost connection to base stream");
+                    var pageCount = stream.Length / Page.PageRawSize;
 
-                CommitPage(p, w);
-                return p;
-            }
-            finally {
-                _storage.Release(ref w);
+                    var p = new Page
+                    {
+                        PageType = PageType.Invalid,
+                        NextPageId = -1,
+                        PrevPageId = -1,
+                        FirstPageId = (int)pageCount, // very thread sensitive!
+                        DocumentSequence = 0,
+                        DocumentId = Guid.Empty
+                    };
+                    p.UpdateCRC();
+
+                    // TODO: add to free list?
+
+                    CommitPage(p, w);
+                    return p;
+                }
+                finally
+                {
+                    _storage.Release(ref w);
+                }
             }
         }
 
@@ -226,9 +265,13 @@ namespace StreamDb.Internal.DbStructure
         /// This method is very thread sensitive
         /// </summary>
         public void CommitPage(Page page) {
+            if (page == null || page.FirstPageId < 0) throw new Exception("Attempted to commit an invalid page");
+            if (!page.ValidateCrc()) throw new Exception("Attempted to commit a corrupted page");
+
+            // TODO: remove from free list?
+
             var w = _storage.AcquireWriter();
             try {
-                if (page == null || page.FirstPageId < 0) throw new Exception("Attempted to commit an invalid page");
                 CommitPage(page, w);
             }
             finally {
@@ -242,8 +285,6 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         private void CommitPage([NotNull]Page page, [NotNull]BinaryWriter w)
         {
-            if (!page.ValidateCrc()) throw new Exception("Attempted to commit a corrupted page");
-
             w.Seek(page.FirstPageId * Page.PageRawSize, SeekOrigin.Begin);
             var buf = page.ToBytes();
             w.Write(buf);
