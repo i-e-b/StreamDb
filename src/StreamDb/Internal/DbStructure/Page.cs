@@ -1,9 +1,40 @@
 ﻿using System;
+using System.IO;
 using JetBrains.Annotations;
 using StreamDb.Internal.Support;
 
 namespace StreamDb.Internal.DbStructure
 {
+
+    /// <summary>
+    /// Represents a generalised page in the DB with known contents
+    /// </summary>
+    public class Page<T> : Page where T : IByteSerialisable, new()
+    {
+        /// <summary>
+        /// Snapshot of the page content when it was loaded
+        /// </summary>
+        [NotNull]public T View { get; set; }
+
+        /// <summary>
+        /// Read a single page and take a snapshot of it's contents
+        /// </summary>
+        /// <param name="pageId">pageID that has been loaded</param>
+        /// <param name="bytes">page data</param>
+        public Page(int pageId, byte[] bytes)
+        {
+            FromBytes(bytes);
+
+            if (!ValidateCrc()) throw new Exception("Page<T>.ctor: CRC failed");
+
+            OriginalPageId = pageId;
+
+            var v = new T();
+            v.FromBytes(GetData());
+            View = v;
+        }
+    }
+
     /// <summary>
     /// Represents a generalised page in the DB.
     /// At the moment these are fixed to 4kb for data + headers

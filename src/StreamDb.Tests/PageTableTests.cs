@@ -19,11 +19,11 @@ namespace StreamDb.Tests
             Assert.That(ms.Length, Is.EqualTo(Page.PageRawSize * 4), "Unexpected empty DB size");
             Console.WriteLine($"Empty database consumes {(ms.Length / 1024)}kB");
 
-            var page0 = subject.GetPage(0);
+            var page0 = subject.GetPageRaw(0);
             Assert.That(page0, Is.Not.Null, "Failed to read root page");
             Assert.That(page0.ValidateCrc(), Is.True, "Root page CRC is wrong");
 
-            var page1 = subject.GetPage(1);
+            var page1 = subject.GetPageRaw(1);
             Assert.That(page1, Is.Not.Null, "Failed to read first index page");
             Assert.That(page1.ValidateCrc(), Is.True, "First index page CRC is wrong");
         }
@@ -64,7 +64,7 @@ namespace StreamDb.Tests
                 stored.Seek(0, SeekOrigin.Begin);
                 var reader = new PageTable(stored);
 
-                var resultPage = reader.GetPage(pageId);
+                var resultPage = reader.GetPageRaw(pageId);
 
                 Assert.That(resultPage, Is.Not.Null, "Failed to read result page");
                 
@@ -74,6 +74,27 @@ namespace StreamDb.Tests
                 var finalStr = Encoding.UTF8.GetString(result);
                 Assert.That(finalStr, Is.EqualTo("Hello, world"));
             }
+        }
+
+
+        [Test]
+        public void can_write_data_pages_from_a_stream () {
+            Assert.Fail("NYI");
+        }
+
+        [Test]
+        public void can_delete_a_chain_of_pages_from_its_start () {
+            Assert.Fail("NYI");
+        }
+
+        [Test]
+        public void can_delete_a_chain_of_pages_from_its_middle () {
+            Assert.Fail("NYI");
+        }
+
+        [Test]
+        public void can_delete_a_chain_of_pages_from_its_end () {
+            Assert.Fail("NYI");
         }
 
     }

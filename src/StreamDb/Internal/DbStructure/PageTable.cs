@@ -180,7 +180,7 @@ namespace StreamDb.Internal.DbStructure
         /// <summary>
         /// Read a specific existing page by Page ID. Returns null if the page does not exist.
         /// </summary>
-        [CanBeNull]public Page GetPage(int pageId)
+        [CanBeNull]public Page<T> GetPageView<T>(int pageId) where T : IByteSerialisable, new()
         {
             var reader = _storage.AcquireReader();
             try {
@@ -192,10 +192,32 @@ namespace StreamDb.Internal.DbStructure
 
                 if (reader.BaseStream.Length < byteEnd) return null;
 
-                var result = new Page();
                 reader.BaseStream.Seek(byteOffset, SeekOrigin.Begin);
-                result.FromBytes(reader.ReadBytes(Page.PageRawSize));
+                var bytes = reader.ReadBytes(Page.PageRawSize);
+                return new Page<T>(pageId, bytes);
+            } finally {
+                _storage.Release(ref reader);
+            }
+        }
+        [CanBeNull]public Page GetPageRaw(int pageId)
+        {
+            var reader = _storage.AcquireReader();
+            try {
+                if (reader.BaseStream == null) throw new Exception("Page table base stream is invalid");
+                if (pageId < 0) return null;
+
+                var byteOffset = pageId * Page.PageRawSize;
+                var byteEnd = byteOffset + Page.PageRawSize;
+
+                if (reader.BaseStream.Length < byteEnd) return null;
+
+                reader.BaseStream.Seek(byteOffset, SeekOrigin.Begin);
+                var bytes = reader.ReadBytes(Page.PageRawSize);
+                
+                var result = new Page();
+                result.FromBytes(bytes);
                 result.OriginalPageId = pageId;
+                if (!result.ValidateCrc()) return null;
                 return result;
             } finally {
                 _storage.Release(ref reader);
@@ -204,7 +226,7 @@ namespace StreamDb.Internal.DbStructure
 
         [NotNull]private RootPage ReadRoot() {
             // TODO: avoid re-reading every time
-            var page = GetPage(0);
+            var page = GetPageRaw(0);
             if (page == null) throw new Exception("PageTable.ReadRoot: Failed to read root page");
             if (!page.ValidateCrc()) throw new Exception("PageTable.ReadRoot: Root entry failed CRC check. Must recover database.");
             var final = new RootPage();
@@ -212,14 +234,12 @@ namespace StreamDb.Internal.DbStructure
             return final;
         }
 
-        [NotNull]private FreeListPage GetFreePageList() {
+        [NotNull]private Page<FreeListPage> GetFreePageList() {
             // TODO: avoid re-reading every time
             var root = ReadRoot();
-            var page = GetPage(root.GetFreeListPageId());
+            var page = GetPageView<FreeListPage>(root.GetFreeListPageId());
             if (page == null) throw new Exception("PageTable.ReadRoot: Failed to free list page");
-            var free = new FreeListPage();
-            free.FromBytes(page.GetData());
-            return free;
+            return page;
         }
 
         /// <summary>
@@ -229,11 +249,20 @@ namespace StreamDb.Internal.DbStructure
         public Page GetFreePage()
         {
             // try to re-use a page:
+            // TODO: walk the chain properly.
             var freeList = GetFreePageList();
-            var pageId = freeList.GetNext();
-            if (pageId > 0) { return GetPage(pageId); }
+            var pageId = freeList.View.GetNext();
+            if (pageId > 0) { return GetPageRaw(pageId); }
 
             // none available. Write a new one:
+            return AllocatePage();
+        }
+
+        /// <summary>
+        /// Allocate a new page (without checking for a free page)
+        /// </summary>
+        [NotNull]private Page AllocatePage()
+        {
             lock (_newPageLock)
             {
                 var w = _storage.AcquireWriter();
@@ -244,17 +273,15 @@ namespace StreamDb.Internal.DbStructure
 
                     var p = new Page
                     {
-                        OriginalPageId = (int)pageCount, // very thread sensitive!
+                        OriginalPageId = (int) pageCount, // very thread sensitive!
                         PageType = PageType.Invalid,
                         NextPageId = -1,
                         PrevPageId = -1,
-                        FirstPageId = (int)pageCount, // should update if chaining
+                        FirstPageId = (int) pageCount, // should update if chaining
                         DocumentSequence = 0,
                         DocumentId = Guid.Empty
                     };
                     p.UpdateCRC();
-
-                    // TODO: add to free list?
 
                     CommitPage(p, w);
                     return p;
@@ -264,6 +291,66 @@ namespace StreamDb.Internal.DbStructure
                     _storage.Release(ref w);
                 }
             }
+        }
+
+
+        /// <summary>
+        /// Add all pages in the chain to the free list.
+        /// This cannot be used to delete IDs less than 4 (core tables)
+        /// <para></para>
+        /// This should be used when an add or update has caused a page link to be expired
+        /// </summary>
+        /// <param name="pageId">ID of any page in the chain.</param>
+        public void DeletePageChain(int pageId) {
+            // TODO: Check the integrity of the chain before deleting
+
+            var free = GetFreePageList();
+
+            var tagged = GetPageRaw(pageId);
+            if (tagged == null) return;
+
+            var rootId = tagged.FirstPageId;
+            var current = GetPageRaw(rootId);
+
+            while (current != null) {
+                var ok = free.View.TryAdd(current.OriginalPageId);
+                if (!ok) {
+                    // need to grow free list
+                    free = GrowFreeList(free);
+                }
+
+                current = GetPageRaw(current.NextPageId);
+            }
+        }
+
+        [NotNull]private Page<FreeListPage> GrowFreeList([NotNull]Page<FreeListPage> freeLink)
+        {
+            // try to move forward in links
+            if (freeLink.NextPageId > 0) {
+                return GetPageView<FreeListPage>(freeLink.NextPageId) ?? throw new Exception("Free page list chain is broken");
+            }
+
+            // TODO: generalise this:
+            // Got to the end -- need to make a new free page
+            var newPage = AllocatePage();
+            newPage.PrevPageId = freeLink.OriginalPageId;
+            newPage.DocumentId = Page.FreePageGuid;
+            newPage.FirstPageId = freeLink.FirstPageId;
+            newPage.NextPageId = -1;
+            newPage.PageType = PageType.ExpiredList;
+            newPage.Dirty = true;
+            newPage.DocumentSequence = (ushort) (freeLink.DocumentSequence + 1);
+
+            var pageBytes = new FreeListPage().ToBytes();
+            newPage.Write(pageBytes, 0, 0, pageBytes.Length);
+            newPage.UpdateCRC();
+
+            CommitPage(newPage);
+
+            freeLink.NextPageId = newPage.OriginalPageId; // race condition risk!
+            CommitPage(freeLink);
+
+            return GetPageView<FreeListPage>(newPage.OriginalPageId) ?? throw new Exception("Page creation failed");
         }
 
         /// <summary>
