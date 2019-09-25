@@ -1,6 +1,8 @@
-﻿using NUnit.Framework;
+﻿using System;
+using System.Collections.Generic;
+using NUnit.Framework;
 using StreamDb.Internal.DbStructure;
-using StreamDb.Internal.Support;
+
 // ReSharper disable PossibleNullReferenceException
 
 namespace StreamDb.Tests
@@ -23,7 +25,24 @@ namespace StreamDb.Tests
 
             Assert.That(ok, Is.True, "Add was rejected");
         }
-        
+
+        [Test]
+        public void adding_a_static_page_is_rejected () {
+            var subject = new FreeListPage();
+
+            bool ok = subject.TryAdd(1);
+
+            Assert.That(ok, Is.False, "Add was accepted, but should have been rejected");
+        }
+
+        [Test]
+        public void adding_a_negative_page_id_is_rejected () {
+            var subject = new FreeListPage();
+
+            bool ok = subject.TryAdd(-1);
+
+            Assert.That(ok, Is.False, "Add was accepted, but should have been rejected");
+        }
 
         [Test]
         public void can_consume_an_added_page () {
@@ -39,91 +58,75 @@ namespace StreamDb.Tests
 
         [Test]
         public void adding_a_page_to_a_full_list_is_rejected () {
-            Assert.Fail("NYI");
+
+            var subject = new FreeListPage();
+            int i;
+            for (i = 0; i < FreeListPage.Capacity * 2; i++)
+            {
+                if (!subject.TryAdd(i + 4)) break;
+            }
+
+            Assert.That(i, Is.EqualTo(FreeListPage.Capacity), "Free list did not stop at limit");
         }
 
         [Test]
         public void adding_and_consuming_pages_out_of_sequence_works () {
-            Assert.Fail("NYI");
+            var expected = new HashSet<int>();
+            var rnd = new Random();
+            var subject = new FreeListPage();
+
+            int v;
+            for (int i = 0; i < 1000; i++)
+            {
+                var q = rnd.Next(0, 2);
+                switch (q) {
+                    case 0:
+                        v = rnd.Next(4,50000);
+                        if (!expected.Contains(v) && subject.TryAdd(v)) {
+                            expected.Add(v);
+                        }
+                        Console.Write("+");
+                        break;
+
+                    case 1:
+                        v = subject.GetNext();
+                        if (v < 0) break;
+                        if (!expected.Contains(v)) {
+                            Assert.Fail("Unexpected value");
+                        }
+                        expected.Remove(v);
+                        Console.Write("-");
+                        break;
+                }
+            }
+
         }
 
         [Test]
         public void free_table_survives_serialisation () {
-            Assert.Fail("NYI");
-        }
-    }
-
-    /// <summary>
-    /// Page structure for the free pages list
-    /// </summary>
-    /// <remarks>
-    /// The free chain is a set of pages, each of which is just a big array of Int32 entries
-    /// page zero is always occupied, and negative pages are invalid, so either of these is an empty slot in the free list
-    ///
-    /// Each free page can hold 1015 page IDs (3.9MB of document data space) -- so having multiples *should* be rare
-    /// When searching for a free page, we scan the free chain first. If we can't find anything we
-    /// allocate more space (writing off the end of the stream).
-    ///
-    /// Reading and writing free pages is done as close to the start of the chain as possible.
-    /// The first free chain page is never removed, but the other pages can be removed when empty.
-    ///
-    /// Our database keeps up to 2 versions of each document, freeing pages as the third version 'expires',
-    /// so in applications where updates happen a lot, we expect the free chain to be busy
-    ///
-    /// There is no clever data structures or algorithms here yet, it's just a scan.
-    /// </remarks>
-    public class FreeListPage: IByteSerialisable
-    {
-        private readonly int[] _entries;
-        const int Capacity = Page.PageDataCapacity / sizeof(int);
-
-        public FreeListPage()
-        {
-            _entries = new int[Capacity];
-        }
-
-        /// <summary>
-        /// Return a free page if it can be found. Returns -1 if no free pages are available.
-        /// The free page will be removed from the list as part of the get call.
-        /// </summary>
-        public int GetNext()
-        {
-            for (int i = 0; i < Capacity; i++)
+            var added = new List<int>();
+            var retrieved = new List<int>();
+            var original = new FreeListPage();
+            int i;
+            for (i = 10; i < 100; i += i / 10)
             {
-                if (_entries[i] <= 3) continue;
-
-                var found = _entries[i];
-                _entries[i] = 0;
-                return found;
+                Console.Write($"{i}, ");
+                added.Add(i);
+                original.TryAdd(i);
             }
-            return -1;
-        }
-        
-        /// <summary>
-        /// Try to add a new free page to the list. Returns true if it worked, false if there was no free space
-        /// </summary>
-        public bool TryAdd(int pageId)
-        {
-            for (int i = 0; i < Capacity; i++)
+
+            var bytes = original.ToBytes();
+            var result = new FreeListPage();
+            result.FromBytes(bytes);
+
+            for (i = 0; i < 100; i++)
             {
-                if (_entries[i] > 3) continue;
-
-                _entries[i] = pageId;
-                return true;
+                var free = result.GetNext();
+                if (free > 0) retrieved.Add(free);
+                else break;
             }
-            return false;
-        }
 
-        /// <inheritdoc />
-        public byte[] ToBytes()
-        {
-            return null;//TODO:_IMPLEMENT_ME;
-        }
-
-        /// <inheritdoc />
-        public void FromBytes(byte[] source)
-        {
-            //TODO:_IMPLEMENT_ME();
+            Assert.That(retrieved, Is.EquivalentTo(added), "Free list was corrupted");
         }
     }
 }
