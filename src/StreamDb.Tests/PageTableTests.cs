@@ -1,7 +1,7 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using System.Text;
 using NUnit.Framework;
-using StreamDb.Internal;
 using StreamDb.Internal.DbStructure;
 
 // ReSharper disable PossibleNullReferenceException
@@ -16,7 +16,8 @@ namespace StreamDb.Tests
             var ms = new MemoryStream();
             var subject = new PageTable(ms);
 
-            Assert.That(ms.Length, Is.EqualTo(Page.PageRawSize * 2), "Unexpected empty DB size");
+            Assert.That(ms.Length, Is.EqualTo(Page.PageRawSize * 4), "Unexpected empty DB size");
+            Console.WriteLine($"Empty database consumes {(ms.Length / 1024)}kB");
 
             var page0 = subject.GetPage(0);
             Assert.That(page0, Is.Not.Null, "Failed to read root page");
@@ -34,7 +35,7 @@ namespace StreamDb.Tests
 
             var page_n = subject.GetFreePage();
             Assert.That(page_n, Is.Not.Null, "Page not provided");
-            Assert.That(page_n.RootPageId, Is.EqualTo(2), "Unexpected page index");
+            Assert.That(page_n.FirstPageId, Is.GreaterThan(3), "Unexpected page index");
         }
 
         [Test]
@@ -48,7 +49,7 @@ namespace StreamDb.Tests
                 var testPage = creator.GetFreePage();
                 
 
-                pageId = testPage.RootPageId;
+                pageId = testPage.FirstPageId;
                 testPage.Write(sample, 0, 0, sample.Length);
                 testPage.UpdateCRC();
                 creator.CommitPage(testPage);

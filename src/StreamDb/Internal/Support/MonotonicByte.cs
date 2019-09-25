@@ -1,4 +1,5 @@
 ﻿using System;
+using JetBrains.Annotations;
 
 namespace StreamDb.Internal.Support
 {
@@ -47,7 +48,7 @@ namespace StreamDb.Internal.Support
         /// <summary>
         /// Get a new counter that is one version ahead of this one
         /// </summary>
-        public MonotonicByte GetNext()
+        [NotNull]public MonotonicByte GetNext()
         {
             var next = new MonotonicByte(_value);
             next.Increment();

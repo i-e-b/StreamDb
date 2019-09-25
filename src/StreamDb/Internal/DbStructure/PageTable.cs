@@ -59,36 +59,112 @@ namespace StreamDb.Internal.DbStructure
 
         private void InitialisePageTable()
         {
+            // NOTE:
+            //      This is NOT the normal way of setting up pages.
+            //      This is ONLY for the initial setup of a blank DB.
+            //
+
+            var index0 = new IndexPage();
+            var free0 = new FreeListPage();
+            var path0 = new PathIndex<SerialGuid>();
+
+            // we use fixed positions for the default pages. Set initial versions
+            var root0 = new RootPage();
+            root0.AddIndex(pageId: 1, out _);
+            root0.AddFreeList(pageId: 2, out _);
+            root0.AddPathLookup(pageId: 3, out _);
+
+            var root = NewRootForBlankDB(root0);
+            var index = NewIndexForBlankDB(index0);
+            var free = NewFreeListForBlankDB(free0);
+            var path = NewPathLookupForBlankDB(path0);
+
+            // Write to storage
             var w = _storage.AcquireWriter();
             try {
                 w.Seek(0, SeekOrigin.Begin);
-                var root = new Page{
-                    PageType = PageType.Root,
-                    RootPageId = 0,
-                    DocumentId = Page.RootDocumentGuid,
-                    DocumentSequence = 0,
-                    NextPageId = -1,
-                    PrevPageId = -1
-                };
-                root.UpdateCRC();
-
-                var index1 = new Page{
-                    PageType = PageType.Index,
-                    RootPageId = 1,
-                    DocumentId = Page.IndexTreeGuid,
-                    DocumentSequence = 0,
-                    NextPageId = -1,
-                    PrevPageId = -1
-                };
-                index1.UpdateCRC();
-
                 w.Write(root.ToBytes());
-                w.Write(index1.ToBytes());
+                w.Write(index.ToBytes());
+                w.Write(free.ToBytes());
+                w.Write(path.ToBytes());
             }
             finally 
             {
                 _storage.Release(ref w);
             }
+
+        }
+        
+        [NotNull]private static Page NewPathLookupForBlankDB([NotNull]PathIndex<SerialGuid> path0)
+        {
+            var page = new Page
+            {
+                PageType = PageType.PathLookup,
+                NextPageId = -1,
+                PrevPageId = -1,
+                DocumentSequence = 0,
+                DocumentId = Page.PathLookupGuid,
+                Dirty = true,
+                FirstPageId = 2
+            };
+            var bytes = path0.ToBytes();
+            page.Write(bytes, 0, 0, bytes.Length);
+            page.UpdateCRC();
+            return page;
+        }
+        
+        [NotNull]private static Page NewFreeListForBlankDB([NotNull]FreeListPage free0)
+        {
+            var page = new Page
+            {
+                PageType = PageType.ExpiredList,
+                NextPageId = -1,
+                PrevPageId = -1,
+                DocumentSequence = 0,
+                DocumentId = Page.FreePageGuid,
+                Dirty = true,
+                FirstPageId = 2
+            };
+            var bytes = free0.ToBytes();
+            page.Write(bytes, 0, 0, bytes.Length);
+            page.UpdateCRC();
+            return page;
+        }
+
+        [NotNull]private static Page NewIndexForBlankDB([NotNull]IndexPage index0)
+        {
+            var index = new Page
+            {
+                PageType = PageType.Index,
+                NextPageId = -1,
+                PrevPageId = -1,
+                DocumentSequence = 0,
+                DocumentId = Page.IndexTreeGuid,
+                Dirty = true,
+                FirstPageId = 1
+            };
+            var indexBytes = index0.ToBytes();
+            index.Write(indexBytes, 0, 0, indexBytes.Length);
+            index.UpdateCRC();
+            return index;
+        }
+
+        [NotNull]private static Page NewRootForBlankDB([NotNull]RootPage root0)
+        {
+            var root = new Page
+            {
+                PageType = PageType.Root,
+                NextPageId = -1,
+                PrevPageId = -1,
+                DocumentSequence = 0,
+                DocumentId = Page.RootDocumentGuid,
+                Dirty = true,
+                FirstPageId = 0
+            };
+            var rootBytes = root0.ToBytes();
+            root.Write(rootBytes, 0, 0, rootBytes.Length);
+            root.UpdateCRC();
+            return root;
         }
 
         /// <summary>
@@ -131,7 +207,7 @@ namespace StreamDb.Internal.DbStructure
                     PageType = PageType.Invalid,
                     NextPageId = -1,
                     PrevPageId = -1,
-                    RootPageId = (int) pageCount, // very thread sensitive!
+                    FirstPageId = (int) pageCount, // very thread sensitive!
                     DocumentSequence = 0,
                     DocumentId = Guid.Empty
                 };
@@ -152,7 +228,7 @@ namespace StreamDb.Internal.DbStructure
         public void CommitPage(Page page) {
             var w = _storage.AcquireWriter();
             try {
-                if (page == null || page.RootPageId < 0) throw new Exception("Attempted to commit an invalid page");
+                if (page == null || page.FirstPageId < 0) throw new Exception("Attempted to commit an invalid page");
                 CommitPage(page, w);
             }
             finally {
@@ -168,7 +244,7 @@ namespace StreamDb.Internal.DbStructure
         {
             if (!page.ValidateCrc()) throw new Exception("Attempted to commit a corrupted page");
 
-            w.Seek(page.RootPageId * Page.PageRawSize, SeekOrigin.Begin);
+            w.Seek(page.FirstPageId * Page.PageRawSize, SeekOrigin.Begin);
             var buf = page.ToBytes();
             w.Write(buf);
         }

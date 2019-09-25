@@ -15,7 +15,7 @@ namespace StreamDb.Internal.DbStructure
     /// The result of path index is stored as a special document in the database, and used
     /// to look up files by path.
     /// </remarks>
-    public class PathIndex<T> where T : IByteSerialisable, new()
+    public class PathIndex<T>: IByteSerialisable where T : IByteSerialisable, new()
     {
         // Flag values
         const byte HAS_MATCH = 1 << 0;
@@ -307,6 +307,12 @@ namespace StreamDb.Internal.DbStructure
         {
             if (stream == null) throw new ArgumentNullException(nameof(stream));
             var result = new PathIndex<T>();
+            OverwriteFromStream(stream, result);
+            return result;
+        }
+
+        private static void OverwriteFromStream([NotNull]Stream stream, [NotNull]PathIndex<T> result)
+        {
             using (var r = new BinaryReader(stream, Encoding.UTF8, true))
             {
                 if (r.ReadInt64() != INDEX_MARKER) throw new Exception("Input stream missing index marker");
@@ -329,7 +335,6 @@ namespace StreamDb.Internal.DbStructure
 
                 if (r.ReadInt64() != END_MARKER) throw new Exception("Input stream missing end marker");
             }
-            return result;
         }
 
         private static T ReadDataEntry([NotNull]BinaryReader r)
@@ -349,7 +354,6 @@ namespace StreamDb.Internal.DbStructure
         {
             if (data == null) { w.Write(EMPTY_OFFSET); return; }
             var bytes = data.ToBytes();
-            if (bytes == null) { w.Write(EMPTY_OFFSET); return; }
             w.Write(bytes.Length);
             w.Write(bytes);
         }
@@ -383,6 +387,26 @@ namespace StreamDb.Internal.DbStructure
             if (node.Left >= 0) w.Write(node.Left);
             if (node.Right >= 0) w.Write(node.Right);
             if (node.DataIdx >= 0) w.Write(node.DataIdx);
+        }
+
+        /// <inheritdoc />
+        public byte[] ToBytes()
+        {
+            using (var ms = new MemoryStream()) {
+                WriteTo(ms);
+                ms.Seek(0, SeekOrigin.Begin);
+                return ms.ToArray() ?? throw new Exception();
+            }
+        }
+
+        /// <inheritdoc />
+        public void FromBytes(byte[] source)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            using (var ms = new MemoryStream(source)) {
+                ms.Seek(0, SeekOrigin.Begin);
+                OverwriteFromStream(ms, this);
+            }
         }
     }
 }

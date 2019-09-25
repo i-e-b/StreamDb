@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
 using NUnit.Framework;
-using StreamDb.Internal;
 using StreamDb.Internal.DbStructure;
 
 // ReSharper disable PossibleNullReferenceException
@@ -20,7 +19,7 @@ namespace StreamDb.Tests
             // If Guid.Zero exists in the tree, that's the end of the branch
 
             var subject = new IndexPage();
-            var found = subject.Search(IndexPage.NeutralDocId, out _, out _);
+            var found = subject.Search(IndexPage.NeutralDocId, out _);
 
             Assert.That(found, Is.False, "Search revealed the phantom root node");
         }
@@ -88,7 +87,7 @@ namespace StreamDb.Tests
             int i;
             for (i = 0; i < 200; i++) { subject.TryInsert(Guid.NewGuid(), 123); }
 
-            var found = subject.Search(Guid.NewGuid(), out _, out _);
+            var found = subject.Search(Guid.NewGuid(), out _);
             Assert.That(found, Is.False, "Found a key that was not inserted");
         }
 
@@ -108,13 +107,14 @@ namespace StreamDb.Tests
             for (int i = 0; i < 200; i++) { subject.TryInsert(Guid.NewGuid(), 123); }
 
 
-            var found = subject.Search(key, out var linkA, out var linkB);
+            var found = subject.Search(key, out var link);
             Assert.That(found, Is.True, "Failed to find target");
             
-            Assert.That(linkA.LastPage, Is.EqualTo(555), "Bad page info");
-            Assert.That(linkA.Version.Value, Is.EqualTo(0), "Bad version info");
+            link.TryGetLink(0, out var newPageId);
+            Assert.That(newPageId, Is.EqualTo(555), "Bad page info");
 
-            Assert.That(linkB.LastPage, Is.EqualTo(-1), "New index has an old link!");
+            link.TryGetLink(1, out var oldPageId);
+            Assert.That(oldPageId, Is.EqualTo(-1), "New index has an old link!");
         }
         
 
@@ -135,17 +135,17 @@ namespace StreamDb.Tests
 
             var bytes = original.ToBytes();
 
-            original = null;
             var result = new IndexPage();
             result.FromBytes(bytes);
 
-            var found = result.Search(key, out var linkA, out var linkB);
+            var found = result.Search(key, out var link);
             Assert.That(found, Is.True, "Failed to find target");
             
-            Assert.That(linkA.LastPage, Is.EqualTo(555), "Bad page info");
-            Assert.That(linkA.Version.Value, Is.EqualTo(0), "Bad version info");
+            link.TryGetLink(0, out var newPageId);
+            Assert.That(newPageId, Is.EqualTo(555), "Bad page info");
 
-            Assert.That(linkB.LastPage, Is.EqualTo(-1), "New index has an old link!");
+            link.TryGetLink(1, out var oldPageId);
+            Assert.That(oldPageId, Is.EqualTo(-1), "New index has an old link!");
         }
 
         [Test]
@@ -186,41 +186,41 @@ namespace StreamDb.Tests
             // Update 1
             var ok = subject.Update(key, 2, out var exp1);
             Assert.That(ok, Is.True, "Update failed");
-            var found = subject.Search(key, out var A, out var B);
+            var found = subject.Search(key, out var link);
             Assert.That(found, Is.True, "Updated value was lost");
             Assert.That(exp1, Is.EqualTo(-1), "Expected no pages expired, but found one");
 
-            Assert.That(A.LastPage, Is.EqualTo(1), "old value wrong");
-            Assert.That(A.Version.Value, Is.EqualTo(0), "old value version wrong");
+            link.TryGetLink(0, out var pageId);
+            Assert.That(pageId, Is.EqualTo(2), "new value wrong");
 
-            Assert.That(B.LastPage, Is.EqualTo(2), "new value wrong");
-            Assert.That(B.Version.Value, Is.EqualTo(1), "new value version wrong");
+            link.TryGetLink(1, out pageId);
+            Assert.That(pageId, Is.EqualTo(1), "old value wrong");
 
             // Update 2
             ok = subject.Update(key, 3, out var exp2);
             Assert.That(ok, Is.True, "Update failed");
-            found = subject.Search(key, out A, out B);
+            found = subject.Search(key, out link);
             Assert.That(found, Is.True, "Updated value was lost");
             Assert.That(exp2, Is.EqualTo(1), $"Expected first page expired, but was {exp2}");
 
-            Assert.That(A.LastPage, Is.EqualTo(3), "new value wrong");
-            Assert.That(A.Version.Value, Is.EqualTo(2), "new value version wrong");
+            link.TryGetLink(0, out pageId);
+            Assert.That(pageId, Is.EqualTo(3), "new value wrong");
 
-            Assert.That(B.LastPage, Is.EqualTo(2), "old value wrong");
-            Assert.That(B.Version.Value, Is.EqualTo(1), "old value version wrong");
+            link.TryGetLink(1, out pageId);
+            Assert.That(pageId, Is.EqualTo(2), "old value wrong");
             
             // Update 3
             ok = subject.Update(key, 4, out var exp3);
             Assert.That(ok, Is.True, "Update failed");
-            found = subject.Search(key, out A, out B);
+            found = subject.Search(key, out link);
             Assert.That(found, Is.True, "Updated value was lost");
             Assert.That(exp3, Is.EqualTo(2), $"Expected first page expired, but was {exp3}");
 
-            Assert.That(A.LastPage, Is.EqualTo(3), "old value wrong");
-            Assert.That(A.Version.Value, Is.EqualTo(2), "old value version wrong");
+            link.TryGetLink(0, out pageId);
+            Assert.That(pageId, Is.EqualTo(4), "new value wrong");
 
-            Assert.That(B.LastPage, Is.EqualTo(4), "new value wrong");
-            Assert.That(B.Version.Value, Is.EqualTo(3), "new value version wrong");
+            link.TryGetLink(1, out pageId);
+            Assert.That(pageId, Is.EqualTo(3), "old value wrong");
 
             // ... and it flip-flops from there
         }

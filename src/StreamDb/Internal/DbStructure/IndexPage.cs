@@ -10,32 +10,6 @@ namespace StreamDb.Internal.DbStructure
     /// </summary>
     public class IndexPage : IByteSerialisable
     {
-        /// <summary>
-        /// A versioned link to a page chain.
-        /// These should always be used in pairs. The most recent is read,
-        /// the older is overwritten
-        /// </summary>
-        /// <remarks>9 bytes</remarks>
-        public class PageLink {
-            /// <summary>
-            /// Version of this link. Always use the latest link whose page has a valid CRC
-            /// </summary>
-            public MonotonicByte Version { get; set; }
-
-            /// <summary>
-            /// End of the page chain (for writing).
-            /// That page will have a link back to the start (for reading)
-            /// </summary>
-            public int LastPage { get; set; }
-
-            /// <summary>
-            /// Return a link that is disabled
-            /// </summary>
-            public static PageLink InvalidLink()
-            {
-                return new PageLink { Version = new MonotonicByte(), LastPage = -1 };
-            }
-        }
 
         const int EntryCount = 126; // 2+4+8+16+32+64
         const int PackedSize = 3276; // (16+5+5) * 126
@@ -46,8 +20,7 @@ namespace StreamDb.Internal.DbStructure
         public static readonly Guid ZeroDocId = Guid.Empty;
 
 
-        [NotNull] private readonly PageLink[] _linkA;
-        [NotNull] private readonly PageLink[] _linkB;
+        [NotNull, ItemNotNull] private readonly VersionedLink[] _links;
         [NotNull] private readonly Guid[] _docIds;
 
         /*
@@ -62,8 +35,9 @@ namespace StreamDb.Internal.DbStructure
 
         public IndexPage()
         {
-            _linkA = new PageLink[EntryCount];
-            _linkB = new PageLink[EntryCount];
+            _links = new VersionedLink[EntryCount];
+            for (int i = 0; i < EntryCount; i++) { _links[i] = new VersionedLink(); }
+
             _docIds = new Guid[EntryCount];
         }
 
@@ -87,12 +61,7 @@ namespace StreamDb.Internal.DbStructure
             if (_docIds[index] != ZeroDocId) throw new Exception("Tried to insert a duplicate document ID");
 
             // found a space. Stick it in.
-            _linkA[index] = new PageLink
-            {
-                LastPage = pageId,
-                Version = new MonotonicByte() // start at zero
-            };
-            _linkB[index] = PageLink.InvalidLink();
+            _links[index].WriteNewLink(pageId, out _);
             _docIds[index] = docId;
             return true;
 
@@ -103,19 +72,16 @@ namespace StreamDb.Internal.DbStructure
         /// If found, this will return up to two page options. Use the newest one with a valid CRC in the page.
         /// </summary>
         /// <param name="docId">Document ID to find</param>
-        /// <param name="optionA">If found, this is one of the page link options. May be null</param>
-        /// <param name="optionB">If found, this is one of the page link options. May be null</param>
-        public bool Search(Guid docId, out PageLink optionA, out PageLink optionB) {
-            optionA = null;
-            optionB = null;
+        /// <param name="link">If found, this is the page link options. May be null</param>
+        public bool Search(Guid docId, out VersionedLink link) {
+            link = null;
 
             var index = Find(docId);
             if (index < 0 || index >= EntryCount) return false; // not found
             if (_docIds[index] == ZeroDocId) return false; // not found
             if (_docIds[index] != docId) throw new Exception("IndexPage.Search: Logic error");
 
-            optionA = _linkA[index];
-            optionB = _linkB[index];
+            link = _links[index];
 
             return true;
         }
@@ -137,43 +103,8 @@ namespace StreamDb.Internal.DbStructure
             if (_docIds[index] == ZeroDocId) return false; // not found
             if (_docIds[index] != docId) throw new Exception("IndexPage.Search: Logic error");
 
-            var optionA = _linkA[index];
-            var optionB = _linkB[index];
-
-            if (optionA?.Version == null || optionB?.Version == null) throw new Exception("IndexPage.Update: invalid option table");
-
-            if (optionB.LastPage < 0) {
-                // B has never been set
-                _linkB[index] = new PageLink
-                {
-                    LastPage = pageId,
-                    Version = optionA.Version.GetNext()
-                };
-                return true;
-            }
-
-            if (optionA.Version == optionB.Version) throw new Exception("IndexPage.Update: option table versions invalid");
-
-            if (optionA.Version > optionB.Version) {
-                // B is older. Replace it.
-                expiredPage = optionB.LastPage;
-                _linkB[index] = new PageLink
-                {
-                    LastPage = pageId,
-                    Version = optionA.Version.GetNext()
-                };
-                return true;
-            }
-
-            // A is older. Replace it.
-            expiredPage = optionA.LastPage;
-            _linkA[index] = new PageLink
-            {
-                LastPage = pageId,
-                Version = optionB.Version.GetNext()
-            };
+            _links[index].WriteNewLink(pageId, out expiredPage);
             return true;
-
         }
 
         /// <summary>
@@ -240,15 +171,8 @@ namespace StreamDb.Internal.DbStructure
                     if (bytes == null) throw new Exception("Failed to read doc guid");
                     _docIds[i] = new Guid(bytes);
 
-                    _linkA[i] = new PageLink{
-                        Version = new MonotonicByte(r.ReadByte()),
-                        LastPage = r.ReadInt32()
-                    };
-
-                    _linkB[i] = new PageLink{
-                        Version = new MonotonicByte(r.ReadByte()),
-                        LastPage = r.ReadInt32()
-                    };
+                    
+                    _links[i].FromBytes(r.ReadBytes(VersionedLink.ByteSize));
                 }
             }
         }
@@ -263,29 +187,12 @@ namespace StreamDb.Internal.DbStructure
                 for (int i = 0; i < EntryCount; i++)
                 {
                     w.Write(_docIds[i].ToByteArray());
-
-                    WriteLink(w, _linkA[i]);
-                    WriteLink(w, _linkB[i]);
+                    w.Write(_links[i].ToBytes());
                 }
 
                 ms.Seek(0, SeekOrigin.Begin);
-                return ms.ToArray();
+                return ms.ToArray() ?? throw new Exception();
             }
         }
-
-        private void WriteLink([NotNull]BinaryWriter w, PageLink link)
-        {
-            if (link != null)
-            {
-                w.Write((byte)(link.Version?.Value ?? 0));
-                w.Write(link.LastPage);
-            }
-            else
-            {
-                w.Write((byte)0);
-                w.Write(-1);
-            }
-        }
-
     }
 }

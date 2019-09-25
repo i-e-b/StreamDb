@@ -19,12 +19,16 @@ namespace StreamDb.Internal.DbStructure
         public static readonly Guid IndexTreeGuid    = new Guid(new byte[] { 127, 127, 127, 127, 127, 127, 127, 127, 1, 1, 1, 1, 1, 1, 1, 1 });
         /// <summary> Special ID for the path lookup document </summary>
         public static readonly Guid PathLookupGuid   = new Guid(new byte[] { 127, 127, 127, 127, 127, 127, 127, 127, 2, 2, 2, 2, 2, 2, 2, 2 });
-        /// <summary> Special ID for pages that have been deleted </summary>
+        /// <summary> Special ID for page that lists other pages that have been deleted </summary>
         public static readonly Guid FreePageGuid     = new Guid(new byte[] { 127, 127, 127, 127, 127, 127, 127, 127, 3, 3, 3, 3, 3, 3, 3, 3 });
+        
+        /// <summary> Special invalid GUID used for indexing </summary>
+        public static readonly Guid InvalidGuid_Index     = new Guid(new byte[] { 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127 });
+
 
         // data positions
         private const int DOC_ID = 0;
-        private const int ROOT_PAGE_ID = 16;
+        private const int FIRST_PAGE_ID = 16;
         private const int PAGE_TYPE = 20;
         private const int DOC_SEQ = 21;
         private const int PREV_LNK = 23;
@@ -50,40 +54,71 @@ namespace StreamDb.Internal.DbStructure
 
         public Page() { _data = new byte[PageRawSize]; }
 
+        /// <summary>
+        /// All pages belonging to a document share the same ID.
+        /// <para></para>
+        /// There are a few special IDs: Page.RootDocumentGuid, Page.IndexTreeGuid, Page.PathLookupGuid, Page.FreePageGuid
+        /// <para></para>
+        /// Two other IDs are disallowed: Page.InvalidGuid_Index and Guid.Zero
+        /// </summary>
         public Guid DocumentId {
             get { return new Guid(Slice(DOC_ID, 16)); }
             set { Unslice(value.ToByteArray(), DOC_ID); }
         }
 
-        public int RootPageId { 
-            get { return BitConverter.ToInt32(_data, ROOT_PAGE_ID); } 
-            set { Unslice(BitConverter.GetBytes(value), ROOT_PAGE_ID); }
+        /// <summary>
+        /// Link directly back to the first page of the page chain (all pages in a chain will have the same first page id)
+        /// </summary>
+        public int FirstPageId { 
+            get { return BitConverter.ToInt32(_data, FIRST_PAGE_ID); } 
+            set { Unslice(BitConverter.GetBytes(value), FIRST_PAGE_ID); }
         }
 
+        /// <summary>
+        /// What does the 'data' part represent? Also has a flag for 'free' status
+        /// </summary>
         public PageType PageType { 
             get { return (PageType)_data[PAGE_TYPE]; } 
             set { _data[PAGE_TYPE] = (byte)value; }
         }
         
+        /// <summary>
+        /// position in the document (uint16 limits documents to 256MB each. Used for recovery)
+        /// </summary>
         public ushort DocumentSequence {  
             get { return BitConverter.ToUInt16(_data, DOC_SEQ); } 
             set { Unslice(BitConverter.GetBytes(value), DOC_SEQ); }
         }
         
+        /// <summary>
+        /// previous page in the document's page chain ( -1 if this is the start )
+        /// </summary>
         public int PrevPageId { 
             get { return BitConverter.ToInt32(_data, PREV_LNK); } 
             set { Unslice(BitConverter.GetBytes(value), PREV_LNK); }
         }
         
+        /// <summary>
+        /// next page in the sequence ( -1 if this is the end )
+        /// </summary>
         public int NextPageId { 
             get { return BitConverter.ToInt32(_data, NEXT_LNK); } 
             set { Unslice(BitConverter.GetBytes(value), NEXT_LNK); }
         }
         
+        /// <summary>
+        /// CRC of the entire page (including headers).
+        /// This is critical to the versioning and recovery process, so must be kept up-to-date
+        /// </summary>
         public uint CrcHash { 
             get { return BitConverter.ToUInt32(_data, CRC_HASH); } 
             set { Unslice(BitConverter.GetBytes(value), CRC_HASH); }
         }
+
+        /// <summary>
+        /// A flag for use in caching. This is not written to storage.
+        /// </summary>
+        public bool Dirty { get; set; }
 
 
         [NotNull]private byte[] Slice(int start, int length) {

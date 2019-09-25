@@ -1,7 +1,6 @@
 ﻿using System;
 using System.IO;
 using NUnit.Framework;
-using StreamDb.Internal;
 using StreamDb.Internal.DbStructure;
 using StreamDb.Internal.Support;
 
@@ -113,6 +112,29 @@ namespace StreamDb.Tests
             Assert.That((string)r2, Is.EqualTo("value3"));
             Assert.That((string)r3, Is.EqualTo("value1"));
             Assert.That((string)r4, Is.Null);
+        }
+
+        [Test]
+        public void survives_serialisation () {
+
+            var source = new PathIndex<ByteString>();
+
+            source.Add("my/path/1", "value1");
+            source.Add("my/path/2", "value2");
+            source.Add("my/other/path", "value3");
+            source.Add("my/other/path/longer", "value4");
+
+        
+            var bytes = source.ToBytes();
+
+            var result = new PathIndex<ByteString>();
+            result.FromBytes(bytes);
+
+
+            Assert.That((string)result.Get("my/path/1"), Is.EqualTo("value1"));
+            Assert.That((string)result.Get("my/path/2"), Is.EqualTo("value2"));
+            Assert.That((string)result.Get("my/other/path"), Is.EqualTo("value3"));
+            Assert.That((string)result.Get("my/other/path/longer"), Is.EqualTo("value4"));
         }
 
         [Test]
