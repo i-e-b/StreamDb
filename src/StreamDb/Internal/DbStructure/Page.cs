@@ -33,6 +33,11 @@ namespace StreamDb.Internal.DbStructure
             v.FromBytes(GetData());
             View = v;
         }
+
+        [NotNull]public static Page<T> FromRaw(Page rawPage) {
+            if (rawPage == null) throw new ArgumentNullException(nameof(rawPage));
+            return new Page<T>(rawPage.OriginalPageId, rawPage._data);
+        }
     }
 
     /// <summary>
@@ -81,7 +86,7 @@ namespace StreamDb.Internal.DbStructure
 
             */
 
-        [NotNull] private readonly byte[] _data;
+        [NotNull] protected internal readonly byte[] _data;
 
         public Page() { _data = new byte[PageRawSize]; }
 
@@ -129,9 +134,14 @@ namespace StreamDb.Internal.DbStructure
             set { Unslice(BitConverter.GetBytes(value), PREV_LNK); }
         }
         
+        // TODO: The "NextPageId" should be protected from races somehow.
         /// <summary>
         /// next page in the sequence ( -1 if this is the end )
         /// </summary>
+        /// <remarks>
+        /// We need a length parameter only on the *last* page of a document. We could use a
+        /// negative value here for that.
+        /// </remarks>
         public int NextPageId { 
             get { return BitConverter.ToInt32(_data, NEXT_LNK); } 
             set { Unslice(BitConverter.GetBytes(value), NEXT_LNK); }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using JetBrains.Annotations;
 using StreamDb.Internal.Support;
@@ -14,6 +15,9 @@ namespace StreamDb.Internal.DbStructure
     /// Occupied document data pages are not listed in the root, these are reachable from the index pages.
     /// A valid page table never has less than 4 pages (pageID 0..3) -- so pageID 4 is the first valid page to allocate
     /// </summary>
+    /// <remarks>
+    /// This class is turning into a bit of a mess. TODO: rebuild this with better abstractions once the DB is functioning.
+    /// </remarks>
     public class PageTable
     {
         /// <summary> A magic number we use to recognise our database format </summary>
@@ -246,13 +250,27 @@ namespace StreamDb.Internal.DbStructure
         /// Get a free page, either by reuse or by allocating a new page.
         /// The returned page will have a correct OriginalPageID, but will need other headers reset, and a new CRC before being committed
         /// </summary>
-        public Page GetFreePage()
+        [NotNull]public Page GetFreePage()
         {
             // try to re-use a page:
-            // TODO: walk the chain properly.
             var freeList = GetFreePageList();
-            var pageId = freeList.View.GetNext();
-            if (pageId > 0) { return GetPageRaw(pageId); }
+
+            // Walk the free page list
+            while (true)
+            {
+                var pageId = freeList.View.GetNext();
+                if (pageId > 0) { 
+                    var page = GetPageRaw(pageId);
+                    if (page == null) break;
+                    return page;
+                }
+                if (freeList.NextPageId <= 0) break;
+
+                // go to next free table page
+                freeList = GetPageView<FreeListPage>(freeList.NextPageId);
+                // TODO: if we empty one of the free pages, it should itself be freed.
+                if (freeList == null) break;
+            }
 
             // none available. Write a new one:
             return AllocatePage();
@@ -304,6 +322,7 @@ namespace StreamDb.Internal.DbStructure
         public void DeletePageChain(int pageId) {
             // TODO: Check the integrity of the chain before deleting
 
+            if (pageId < 4) throw new Exception("Tried to delete a core page");
             var free = GetFreePageList();
 
             var tagged = GetPageRaw(pageId);
@@ -312,45 +331,90 @@ namespace StreamDb.Internal.DbStructure
             var rootId = tagged.FirstPageId;
             var current = GetPageRaw(rootId);
 
+            var loopHash = new HashSet<int>();
+
             while (current != null) {
                 var ok = free.View.TryAdd(current.OriginalPageId);
+                loopHash.Add(current.OriginalPageId);
+
                 if (!ok) {
                     // need to grow free list
-                    free = GrowFreeList(free);
+                    free = WalkFreeList(free);
                 }
 
+                if (loopHash.Contains(current.NextPageId)) throw new Exception("Loop detected in page list.");
                 current = GetPageRaw(current.NextPageId);
             }
         }
 
-        [NotNull]private Page<FreeListPage> GrowFreeList([NotNull]Page<FreeListPage> freeLink)
+        /// <summary>
+        /// Step along the free page list, adding new pages if needed
+        /// </summary>
+        [NotNull]private Page<FreeListPage> WalkFreeList([NotNull]Page<FreeListPage> freeLink)
         {
             // try to move forward in links
             if (freeLink.NextPageId > 0) {
                 return GetPageView<FreeListPage>(freeLink.NextPageId) ?? throw new Exception("Free page list chain is broken");
             }
+    
+            // end of chain. Extend it.
+            var newPage = ChainPage(freeLink, new FreeListPage().ToBytes());
+            return Page<FreeListPage>.FromRaw(newPage);
+        }
 
-            // TODO: generalise this:
-            // Got to the end -- need to make a new free page
+        /// <summary>
+        /// Add a new blank page at the end of a chain.
+        /// New page will carry the same document ID, first page ID, and page type.
+        /// </summary>
+        /// <param name="other">End of a page chain.</param>
+        /// <param name="optionalContent">Data bytes to insert, if any</param>
+        [NotNull]public Page ChainPage([CanBeNull]Page other, [CanBeNull]byte[] optionalContent) {
+            if (other == null) {
+                // special case -- make the first page of a doc
+                // allowing this makes logic elsewhere a lot easier to follow
+                var first = AllocatePage();
+                first.PrevPageId = -1;
+                first.DocumentId = Guid.NewGuid();
+                first.FirstPageId = first.OriginalPageId;
+                first.NextPageId = -1;
+                first.PageType = PageType.Invalid;
+                first.Dirty = true;
+                first.DocumentSequence = 0;
+
+                if (optionalContent != null) {
+                    first.Write(optionalContent, 0, 0, optionalContent.Length);
+                }
+                first.UpdateCRC();
+
+                CommitPage(first);
+                return first;
+            }
+
+            if (other.OriginalPageId <= 0) throw new Exception("Tried to extend an invalid page");
+            if (((int)other.PageType & (int)PageType.Free) == (int)PageType.Free) throw new Exception("Tried to extend a freed page");
+            if (optionalContent?.Length > Page.PageDataCapacity) throw new Exception("New page content too large");
+
             var newPage = AllocatePage();
-            newPage.PrevPageId = freeLink.OriginalPageId;
-            newPage.DocumentId = Page.FreePageGuid;
-            newPage.FirstPageId = freeLink.FirstPageId;
+            newPage.PrevPageId = other.OriginalPageId;
+            newPage.DocumentId = other.DocumentId;
+            newPage.FirstPageId = other.FirstPageId;
             newPage.NextPageId = -1;
-            newPage.PageType = PageType.ExpiredList;
+            newPage.PageType = other.PageType;
             newPage.Dirty = true;
-            newPage.DocumentSequence = (ushort) (freeLink.DocumentSequence + 1);
+            newPage.DocumentSequence = (ushort) (other.DocumentSequence + 1);
 
-            var pageBytes = new FreeListPage().ToBytes();
-            newPage.Write(pageBytes, 0, 0, pageBytes.Length);
+            if (optionalContent != null) {
+                newPage.Write(optionalContent, 0, 0, optionalContent.Length);
+            }
             newPage.UpdateCRC();
 
             CommitPage(newPage);
 
-            freeLink.NextPageId = newPage.OriginalPageId; // race condition risk!
-            CommitPage(freeLink);
+            other.NextPageId = newPage.OriginalPageId; // race condition risk!
+            other.Dirty = true;
+            CommitPage(other);
 
-            return GetPageView<FreeListPage>(newPage.OriginalPageId) ?? throw new Exception("Page creation failed");
+            return newPage;
         }
 
         /// <summary>
@@ -381,6 +445,96 @@ namespace StreamDb.Internal.DbStructure
             w.Seek(page.OriginalPageId * Page.PageRawSize, SeekOrigin.Begin);
             var buf = page.ToBytes();
             w.Write(buf);
+            page.Dirty = false;
         }
+
+        /// <summary>
+        /// Write a new document to data pages and the index.
+        /// Returns new document ID.
+        /// </summary>
+        /// <param name="docDataStream">Stream to use as document source. It will be read from current position to end.</param>
+        public Guid WriteDocument(Stream docDataStream)
+        {
+            if (docDataStream == null) throw new Exception("Tried to write a null stream to the database");
+
+            // build new page chain for data:
+            Page page = null;
+            var buf = new byte[Page.PageDataCapacity];
+            while (docDataStream.Read(buf,0,buf.Length) > 0) {
+                var next = ChainPage(page, buf);
+
+                if (next.PageType == PageType.Invalid) { // first page
+                    next.PageType = PageType.Data;
+                }
+
+                page = next;
+            }
+            if (page == null) throw new Exception("Tried to write an empty stream to the database");
+
+            // add to index
+            WriteToIndex(page);
+
+            // return ID
+            return page.DocumentId;
+        }
+
+        /// <summary>
+        /// Walk the index page list, try to find a place to insert this page.
+        /// Throw if any duplicates found.
+        /// </summary>
+        private void WriteToIndex(Page lastPage)
+        {
+            // TODO: implement
+        }
+
+        /// <summary>
+        /// Present a stream to read from a document, recovered by ID.
+        /// Returns null if the document is not found.
+        /// </summary>
+        public Stream ReadDocument(Guid docId)
+        {
+            // TODO: implement
+            // walk the index page list, try to find an end page for the given ID.
+            // then skip to the start, and wrap in a page-reading stream implementation
+            return null;
+        }
+    }
+
+    public class PageTableStream : Stream {
+        [NotNull]private readonly PageTable _parent;
+        [NotNull]private readonly Page _rootPage;
+
+        public PageTableStream([NotNull]PageTable parent, [NotNull]Page rootPage)
+        {
+            _parent = parent;
+            _rootPage = rootPage;
+        }
+
+        public override void Flush() { }
+
+        /// <inheritdoc />
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            return TODO_IMPLEMENT_ME;
+        }
+
+        /// <inheritdoc />
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            return TODO_IMPLEMENT_ME;
+        }
+
+        public override void SetLength(long value) { }
+        public override void Write(byte[] buffer, int offset, int count) { }
+        /// <inheritdoc />
+        public override bool CanRead => true;
+        public override bool CanSeek => true;
+        public override bool CanWrite => false;
+
+        /// <inheritdoc />
+        public override long Length { get; }
+
+        /// <inheritdoc />
+        public override long Position { get; set; }
     }
 }

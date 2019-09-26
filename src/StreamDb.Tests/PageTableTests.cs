@@ -79,7 +79,24 @@ namespace StreamDb.Tests
 
         [Test]
         public void can_write_data_pages_from_a_stream () {
-            Assert.Fail("NYI");
+            using (var fileDataStream = new MemoryStream())
+            using (var ms = new MemoryStream()){
+                var subject = new PageTable(ms);
+
+                for (int i = 0; i < Page.PageDataCapacity * 3; i++)
+                {
+                    fileDataStream.WriteByte(unchecked((byte)i));
+                }
+                fileDataStream.Seek(0, SeekOrigin.Begin);
+
+                var docID = subject.WriteDocument(fileDataStream);
+
+
+                var resultStream = subject.ReadDocument(docID);
+
+                // TODO: compare the results
+                Assert.Fail("NYI");
+            }
         }
 
         [Test]
