@@ -34,9 +34,22 @@ namespace StreamDb.Internal.DbStructure
             View = v;
         }
 
+        /// <summary>
+        /// Wrap a raw page with a view model
+        /// </summary>
         [NotNull]public static Page<T> FromRaw(Page rawPage) {
             if (rawPage == null) throw new ArgumentNullException(nameof(rawPage));
             return new Page<T>(rawPage.OriginalPageId, rawPage._data);
+        }
+
+        /// <summary>
+        /// Write the View's data back into the raw page, and update the CRC
+        /// </summary>
+        public void SyncView()
+        {
+            var bytes = View.ToBytes();
+            Write(bytes, 0, 0, bytes.Length);
+            UpdateCRC();
         }
     }
 
@@ -243,7 +256,7 @@ namespace StreamDb.Internal.DbStructure
             }
         }
 
-        public byte[] GetData()
+        [NotNull]public byte[] GetData()
         {
             // TODO: split the header and data arrays internally to reduce copying?
             return Slice(PAGE_DATA, PageDataCapacity);

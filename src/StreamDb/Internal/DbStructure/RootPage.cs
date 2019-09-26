@@ -77,5 +77,11 @@ namespace StreamDb.Internal.DbStructure
             if (!FreeListLink.TryGetLink(0, out var id)) return -1;
             return id;
         }
+
+        public int GetIndexListId()
+        {
+            if (!IndexLink.TryGetLink(0, out var id)) return -1;
+            return id;
+        }
     }
 }

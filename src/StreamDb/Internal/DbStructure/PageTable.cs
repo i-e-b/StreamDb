@@ -245,6 +245,14 @@ namespace StreamDb.Internal.DbStructure
             if (page == null) throw new Exception("PageTable.ReadRoot: Failed to free list page");
             return page;
         }
+        
+        [NotNull]private Page<IndexPage> GetIndexPageList() {
+            // TODO: avoid re-reading every time
+            var root = ReadRoot();
+            var page = GetPageView<IndexPage>(root.GetIndexListId());
+            if (page == null) throw new Exception("PageTable.ReadRoot: Failed to free list page");
+            return page;
+        }
 
         /// <summary>
         /// Get a free page, either by reuse or by allocating a new page.
@@ -340,6 +348,10 @@ namespace StreamDb.Internal.DbStructure
                 if (!ok) {
                     // need to grow free list
                     free = WalkFreeList(free);
+                } else {
+                    // commit back to storage
+                    free.UpdateCRC();
+                    CommitPage(free);
                 }
 
                 if (loopHash.Contains(current.NextPageId)) throw new Exception("Loop detected in page list.");
@@ -412,9 +424,20 @@ namespace StreamDb.Internal.DbStructure
 
             other.NextPageId = newPage.OriginalPageId; // race condition risk!
             other.Dirty = true;
+            other.UpdateCRC();
             CommitPage(other);
 
             return newPage;
+        }
+
+        /// <summary>
+        /// Write a page into the storage stream. The PageID *MUST* be correct.
+        /// This method is very thread sensitive
+        /// </summary>
+        public void CommitPage<T>(Page<T> page) where T : IByteSerialisable, new()
+        {
+            page?.SyncView();
+            CommitPage((Page)page);
         }
 
         /// <summary>
@@ -465,6 +488,8 @@ namespace StreamDb.Internal.DbStructure
 
                 if (next.PageType == PageType.Invalid) { // first page
                     next.PageType = PageType.Data;
+                    next.UpdateCRC();
+                    CommitPage(next);
                 }
 
                 page = next;
@@ -482,59 +507,106 @@ namespace StreamDb.Internal.DbStructure
         /// Walk the index page list, try to find a place to insert this page.
         /// Throw if any duplicates found.
         /// </summary>
-        private void WriteToIndex(Page lastPage)
+        private void WriteToIndex([NotNull]Page lastPage)
         {
-            // TODO: implement
+            var index = GetIndexPageList();
+
+            // Walk the index page list
+            while (true)
+            {
+                var ok = index.View.TryInsert(lastPage.DocumentId, lastPage.OriginalPageId);
+                if (ok) { 
+                    CommitPage(index);
+                    return;
+                }
+
+                // Failed to insert, walk the chain
+                index = WalkIndexList(index, shouldAdd: true);
+                if (index == null) throw new Exception("Failed to extend index chain");
+            }
+        }
+        
+        /// <summary>
+        /// Step along the free page list, adding new pages if needed
+        /// </summary>
+        [CanBeNull]private Page<IndexPage> WalkIndexList([NotNull]Page<IndexPage> indexLink, bool shouldAdd)
+        {
+            // try to move forward in links
+            if (indexLink.NextPageId > 0) {
+                return GetPageView<IndexPage>(indexLink.NextPageId) ?? throw new Exception("Index page list chain is broken");
+            }
+    
+            // end of chain. Extend it?
+            if (!shouldAdd) return null;
+            var newPage = ChainPage(indexLink, new IndexPage().ToBytes());
+            return Page<IndexPage>.FromRaw(newPage);
         }
 
         /// <summary>
         /// Present a stream to read from a document, recovered by ID.
         /// Returns null if the document is not found.
         /// </summary>
-        public Stream ReadDocument(Guid docId)
+        [CanBeNull]public Stream ReadDocument(Guid docId)
         {
-            // TODO: implement
             // walk the index page list, try to find an end page for the given ID.
             // then skip to the start, and wrap in a page-reading stream implementation
-            return null;
+
+            var index = GetIndexPageList();
+
+            // Walk the index page list
+            while (true)
+            {
+                var found = index.View.Search(docId, out var version);
+                if (found) {
+                    var ok = version.TryGetLink(0, out var pageId);
+                    if (!ok) throw new Exception("Index version data was damaged");
+
+                    return new PageTableStream(this, GetPageRaw(pageId));
+                }
+
+                // Failed to find, walk the chain
+                index = WalkIndexList(index, shouldAdd: false);
+                if (index == null) return null; // not found
+            }
         }
-    }
 
-    public class PageTableStream : Stream {
-        [NotNull]private readonly PageTable _parent;
-        [NotNull]private readonly Page _rootPage;
-
-        public PageTableStream([NotNull]PageTable parent, [NotNull]Page rootPage)
+        /// <summary>
+        /// Find a specific page in a chain, by document sequence number.
+        /// If the chain does not contain this sequence, method will return null
+        /// </summary>
+        /// <param name="src">Any page in the chain, but preferably the end page</param>
+        /// <param name="sequenceNumber">zero-based sequence number</param>
+        [CanBeNull]public Page FindPageInChain(Page src, int sequenceNumber)
         {
-            _parent = parent;
-            _rootPage = rootPage;
+            if (src == null) return null;
+
+            // TODO:
+            // We should be able to walk around the pages relatively efficiently, assuming both links are good.
+            // From any position, we can
+            // 1. Jump to the start and walk forward
+            // 2. Walk forward or backward from where we are
+            // 3. Jump to the end and walk backward
+
+            // For now, we do the dumb thing: 1. Jump to start; 2. walk forward N steps;
+
+            var page = GetPageRaw(src.FirstPageId);
+            for (int i = 0; i < sequenceNumber; i++)
+            {
+                page = WalkPageChain(page);
+            }
+
+            return page;
         }
 
-        public override void Flush() { }
-
-        /// <inheritdoc />
-        public override int Read(byte[] buffer, int offset, int count)
+        /// <summary>
+        /// Step forward in the page chain. Returns null if at the end.
+        /// Does not extend chains.
+        /// </summary>
+        [CanBeNull]public Page WalkPageChain(Page page)
         {
-            return TODO_IMPLEMENT_ME;
+            if (page == null) return null;
+            if (page.NextPageId < 0) return null;
+            return GetPageRaw(page.NextPageId);
         }
-
-        /// <inheritdoc />
-        public override long Seek(long offset, SeekOrigin origin)
-        {
-            return TODO_IMPLEMENT_ME;
-        }
-
-        public override void SetLength(long value) { }
-        public override void Write(byte[] buffer, int offset, int count) { }
-        /// <inheritdoc />
-        public override bool CanRead => true;
-        public override bool CanSeek => true;
-        public override bool CanWrite => false;
-
-        /// <inheritdoc />
-        public override long Length { get; }
-
-        /// <inheritdoc />
-        public override long Position { get; set; }
     }
 }

@@ -78,24 +78,34 @@ namespace StreamDb.Tests
 
 
         [Test]
-        public void can_write_data_pages_from_a_stream () {
+        public void can_write_and_read_data_pages_from_a_stream () {
             using (var fileDataStream = new MemoryStream())
+            using (var actualStream = new MemoryStream())
             using (var ms = new MemoryStream()){
                 var subject = new PageTable(ms);
 
+                // prepare a data stream that will span multiple pages
                 for (int i = 0; i < Page.PageDataCapacity * 3; i++)
                 {
                     fileDataStream.WriteByte(unchecked((byte)i));
                 }
                 fileDataStream.Seek(0, SeekOrigin.Begin);
 
+                // write it to the DB
                 var docID = subject.WriteDocument(fileDataStream);
 
-
+                // read it back
                 var resultStream = subject.ReadDocument(docID);
+                Assert.That(resultStream, Is.Not.Null, "Failed to find the document");
 
-                // TODO: compare the results
-                Assert.Fail("NYI");
+                // compare the results
+                fileDataStream.Seek(0, SeekOrigin.Begin);
+                var expected = fileDataStream.ToArray();
+                resultStream.CopyTo(actualStream);
+                actualStream.Seek(0, SeekOrigin.Begin);
+                var actual = actualStream.ToArray();
+
+                Assert.That(actual, Is.EquivalentTo(expected), "Data was damaged during storage");
             }
         }
 
