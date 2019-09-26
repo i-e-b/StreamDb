@@ -222,12 +222,12 @@ namespace StreamDb.Internal.DbStructure
             var reader = _storage.AcquireReader();
             try {
                 if (reader.BaseStream == null) throw new Exception("Page table base stream is invalid");
-                if (pageId < 0) return null;
+                if (pageId < 0) return null; // this makes page walking simpler
 
                 var byteOffset = pageId * Page.PageRawSize;
                 var byteEnd = byteOffset + Page.PageRawSize;
 
-                if (reader.BaseStream.Length < byteEnd) return null;
+                if (reader.BaseStream.Length < byteEnd) throw new Exception($"Database stream is truncated at page {pageId}");
 
                 reader.BaseStream.Seek(byteOffset, SeekOrigin.Begin);
                 var bytes = reader.ReadBytes(Page.PageRawSize);
@@ -235,7 +235,7 @@ namespace StreamDb.Internal.DbStructure
                 var result = new Page();
                 result.FromBytes(bytes);
                 result.OriginalPageId = pageId;
-                if (!result.ValidateCrc()) return null;
+                if (!result.ValidateCrc()) throw new Exception($"CRC failed at page {pageId}");
                 return result;
             } finally {
                 _storage.Release(ref reader);

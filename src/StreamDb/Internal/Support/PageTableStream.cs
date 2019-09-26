@@ -1,8 +1,9 @@
 ﻿using System;
 using System.IO;
 using JetBrains.Annotations;
+using StreamDb.Internal.DbStructure;
 
-namespace StreamDb.Internal.DbStructure
+namespace StreamDb.Internal.Support
 {
     public class PageTableStream : Stream {
         [NotNull]private readonly PageTable _parent;
@@ -95,7 +96,7 @@ namespace StreamDb.Internal.DbStructure
             get
             {
                 // TODO: subtract some from the last page based on doc size
-                return _endPage.DocumentSequence * Page.PageDataCapacity;
+                return (_endPage.DocumentSequence + 1) * Page.PageDataCapacity;
             }
         }
 

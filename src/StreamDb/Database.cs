@@ -53,9 +53,31 @@ namespace StreamDb
         }
 
         /// <inheritdoc />
-        public void Dispose()
+        public void Dispose() { _fs.Flush(); _fs.Dispose(); }
+
+        /// <summary>
+        /// Write a document to the given path
+        /// </summary>
+        public void WriteDocument(string path, Stream data)
         {
-            _fs.Dispose();
+            var id = _pages.WriteDocument(data);
+            if (id == Guid.Empty) throw new Exception("Failed to write document data");
+            _pages.BindPathToDocument(path, id);
+        }
+
+        /// <summary>
+        /// Read a document at the given path.
+        /// Returns true if found, false if not found.
+        /// </summary>
+        public bool Get(string path, out Stream stream)
+        {
+            stream = null;
+
+            var id = _pages.GetDocumentIdByPath(path);
+            if (id == Guid.Empty) return false;
+
+            stream = _pages.ReadDocument(id);
+            return stream != null;
         }
     }
 }

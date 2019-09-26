@@ -7,9 +7,9 @@ A minimalist database that uses only Streams as storage, and can survive power l
 * A generalised page storage system, using fixed size pages
 * Every page is monotonically versioned
 * Every page contains enough meta data to reconstruct a partial database
-* Pages are garbage collected once enough versions behind -- perhaps only by explicit user request
+* Pages are garbage collected once enough versions behind
 * Data is referred to with a GUID identifier
-* Data is stored as binaries objects
+* Data is stored as binary objects
 * A special path object is maintained to link string paths to object GUIDs
 
 ## Goals:
@@ -24,8 +24,14 @@ A minimalist database that uses only Streams as storage, and can survive power l
 
 * Any kind of advanced querying, searching, etc.
 * Be the fastest / smallest / anything-est.
-* (De)Serialisation. Users should provide byte streams, and will get byte streams back.
+* Structure (de)serialisation. Users should provide byte streams, and will get byte streams back.
 
+## To-do:
+
+* [ ] Re-write path lookup serialisation, so that it's append only
+* [ ] Improve page structure to support more robust versioning
+* [ ] Support partly-full pages at the page header level
+* [ ] Improve data transport to reduce copying and GC
 
 ## Notes:
 
