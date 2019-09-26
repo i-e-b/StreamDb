@@ -83,5 +83,11 @@ namespace StreamDb.Internal.DbStructure
             if (!IndexLink.TryGetLink(0, out var id)) return -1;
             return id;
         }
+
+        public int GetPathLookupBase()
+        {
+            if (!PathLookupLink.TryGetLink(0, out var id)) return -1;
+            return id;
+        }
     }
 }

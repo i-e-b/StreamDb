@@ -7,6 +7,9 @@ using StreamDb.Internal.Support;
 namespace StreamDb.Internal.DbStructure
 {
     /// <summary>
+    /// The page table class helps manage all the little bits of the database, but it does not present a user-interface.
+    /// Always use the `Database` class unless you are doing very low level work.
+    ///
     /// This is the core of the database format.
     /// Our database starts with a root page that links to:
     ///  - an index page chain
@@ -37,18 +40,35 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         [NotNull]private readonly object _newPageLock = new object();
 
+        [CanBeNull] private RootPage _rootPageCache = null;
+        [CanBeNull] private PathIndex<SerialGuid> _pathIndexCache = null;
+
         public PageTable([NotNull]Stream fs)
         {
             fs.Seek(0, SeekOrigin.Begin);
             _storage = new InterlockBinaryStream(fs, false);
+
+            // Basic sanity tests
+            StartupSanityTests(fs);
+            
+            // Check the structure is ready
+            var root = ReadRoot();
+            if (!root.FreeListLink.TryGetLink(0, out _)) throw new Exception("Database free page list is damaged");
+            if (!root.IndexLink.TryGetLink(0, out _)) throw new Exception("Database index table is damaged");
+            if (!root.PathLookupLink.TryGetLink(0, out _)) throw new Exception("Database path lookup table is damaged");
+        }
+
+        private void StartupSanityTests([NotNull]Stream fs)
+        {
             if (fs.Length == 0) // Empty. Initialise with a root page
             {
                 InitialisePageTable();
             }
-            else if (fs.Length < Page.PageRawSize) // can't have a root page
+            else if (fs.Length < (Page.PageRawSize*3)) // can't have a valid structure
             {
                 if (fs.Length >= 8)
-                { // has some data
+                {
+                    // has some data
                     var reader = _storage.AcquireReader();
                     try
                     {
@@ -60,15 +80,9 @@ namespace StreamDb.Internal.DbStructure
                         _storage.Release(ref reader);
                     }
                 }
+
                 throw new Exception("This database is too heavily truncated to recover");
             }
-            
-            
-            // Basic sanity tests
-            var root = ReadRoot();
-            if (!root.FreeListLink.TryGetLink(0, out _)) throw new Exception("Database free page list is damaged");
-            if (!root.IndexLink.TryGetLink(0, out _)) throw new Exception("Database index table is damaged");
-            if (!root.PathLookupLink.TryGetLink(0, out _)) throw new Exception("Database path lookup table is damaged");
         }
 
         private void InitialisePageTable()
@@ -88,7 +102,7 @@ namespace StreamDb.Internal.DbStructure
             root0.AddFreeList(pageId: 2, out _);
             root0.AddPathLookup(pageId: 3, out _);
 
-            var root = NewRootForBlankDB(root0);
+            var root = NewRootPage(root0);
             var index = NewIndexForBlankDB(index0);
             var free = NewFreeListForBlankDB(free0);
             var path = NewPathLookupForBlankDB(path0);
@@ -163,7 +177,7 @@ namespace StreamDb.Internal.DbStructure
             return index;
         }
 
-        [NotNull]private static Page NewRootForBlankDB([NotNull]RootPage root0)
+        [NotNull]private static Page NewRootPage([NotNull]RootPage root0)
         {
             var root = new Page
             {
@@ -229,12 +243,15 @@ namespace StreamDb.Internal.DbStructure
         }
 
         [NotNull]private RootPage ReadRoot() {
-            // TODO: avoid re-reading every time
+            if (_rootPageCache != null) return _rootPageCache;
+
             var page = GetPageRaw(0);
             if (page == null) throw new Exception("PageTable.ReadRoot: Failed to read root page");
             if (!page.ValidateCrc()) throw new Exception("PageTable.ReadRoot: Root entry failed CRC check. Must recover database.");
+
             var final = new RootPage();
             final.FromBytes(page.GetData());
+            _rootPageCache = final;
             return final;
         }
 
@@ -330,7 +347,7 @@ namespace StreamDb.Internal.DbStructure
         public void DeletePageChain(int pageId) {
             // TODO: Check the integrity of the chain before deleting
 
-            if (pageId < 4) throw new Exception("Tried to delete a core page");
+            if (pageId < 3) throw new Exception("Tried to delete a core page"); // note: the page lookup table can get entirely re-written, so it's not protected
             var free = GetFreePageList();
 
             var tagged = GetPageRaw(pageId);
@@ -616,6 +633,109 @@ namespace StreamDb.Internal.DbStructure
             if (page == null) return null;
             if (page.NextPageId < 0) return null;
             return GetPageRaw(page.NextPageId);
+        }
+
+        /// <summary>
+        /// Bind a document ID to a path. If there was an existing document in that path,
+        /// its ID will be returned.
+        /// </summary>
+        public Guid BindPathToDocument(string path, Guid docId)
+        {
+            lock (_newPageLock)
+            {
+                var lookup = ReadPathIndex();
+
+                var id = SerialGuid.Wrap(docId);
+                var old = lookup.Add(path, id);
+
+                if (old?.Value == docId)
+                {
+                    // no change
+                    return Guid.Empty;
+                }
+
+                // write back changes
+                CommitPathIndexCache();
+
+                return old?.Value ?? Guid.Empty;
+            }
+        }
+        
+        /// <summary>
+        /// Try to find a document ID for a given path.
+        /// Returns empty guid if not found.
+        /// There is no guarantee that the document will still be present in the page table. You will need to do a subsequent read.
+        /// </summary>
+        public Guid GetDocumentIdByPath(string path)
+        {
+            var lookup = ReadPathIndex();
+            var sg = lookup.Get(path);
+            return sg?.Value ?? Guid.Empty;
+        }
+
+        private void CommitPathIndexCache()
+        {
+            // TODO: extend the path index chain with the NEW data in the lookup object.
+            // This current way is pretty messy.
+
+            if (_pathIndexCache == null) return;
+            using (var data = new MemoryStream(_pathIndexCache.ToBytes()))
+            {
+                data.Seek(0, SeekOrigin.Begin);
+
+                // build new page chain for data:
+                Page page = null;
+                var buf = new byte[Page.PageDataCapacity];
+                while (data.Read(buf, 0, buf.Length) > 0)
+                {
+                    var next = ChainPage(page, buf);
+
+                    if (next.PageType == PageType.Invalid)
+                    { // first page
+                        next.PageType = PageType.PathLookup;
+                        next.DocumentId = Page.PathLookupGuid;
+                        next.UpdateCRC();
+                        CommitPage(next);
+                    }
+
+                    page = next;
+                }
+                if (page == null) throw new Exception("Failed to commit path index cache to database");
+
+                // Now update the root page
+                var root = ReadRoot();
+                root.AddPathLookup(page.FirstPageId, out var expired);
+                CommitRootCache(); // <-- would like to avoid this by having an append-only path lookup
+                if (expired > 0) {
+                    DeletePageChain(expired);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Write the root cache back to storage.
+        /// This should be done as soon as possible if the root page is changed.
+        /// </summary>
+        private void CommitRootCache()
+        {
+            if (_rootPageCache == null) return;
+
+            var page = NewRootPage(_rootPageCache);
+            
+            CommitPage(page);
+        }
+
+        [NotNull]private PathIndex<SerialGuid> ReadPathIndex()
+        {
+            if (_pathIndexCache != null) return _pathIndexCache;
+            var root = ReadRoot();
+            var pathBaseId = root.GetPathLookupBase();
+            
+            var source = new PageTableStream(this, GetPageRaw(pathBaseId));
+
+            _pathIndexCache = PathIndex<SerialGuid>.ReadFrom(source);
+
+            return _pathIndexCache;
         }
     }
 }

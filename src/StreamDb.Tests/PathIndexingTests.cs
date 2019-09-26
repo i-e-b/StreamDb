@@ -190,5 +190,16 @@ namespace StreamDb.Tests
             Assert.That((Guid)source.Get("/etc/init.d/02-user.sh"), Is.EqualTo(guid2));
             Assert.That(source.Get("/etc/init.d/03-custom.sh"), Is.EqualTo(null));
         }
+
+        [Test]
+        public void can_look_up_paths_by_value () {
+            // you can assign the same value to multiple paths
+            // this could be quite useful, but I'd like to be able to
+            // reverse the process -- see what paths an objects is bound
+            // to. Could be a simple set of scans (slow) or a restructuring
+            // of the internal data.
+
+            Assert.Inconclusive("Not yet implemented");
+        }
     }
 }

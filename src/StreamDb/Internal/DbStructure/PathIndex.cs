@@ -88,7 +88,7 @@ namespace StreamDb.Internal.DbStructure
         }
         
         /// <summary>
-        /// Return all knows paths that start with the given prefix
+        /// Return all known paths that start with the given prefix
         /// </summary>
         /// <param name="prefix"></param>
         /// <returns></returns>
@@ -288,6 +288,9 @@ namespace StreamDb.Internal.DbStructure
             if (stream == null) return;
             using (var w = new BinaryWriter(stream, Encoding.UTF8, true))
             {
+                // TODO: I would like an append-only format for this,
+                //        so we don't have to re-write the whole structure
+                //        for every change, wasting time and space.
                 w.Write(INDEX_MARKER);
                 w.Write(_nodes.Count);
                 foreach (var node in _nodes) { WriteIndexNode(node, w); }

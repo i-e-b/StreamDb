@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using NUnit.Framework;
@@ -90,18 +91,31 @@ namespace StreamDb.Tests
                     fileDataStream.WriteByte(unchecked((byte)i));
                 }
                 fileDataStream.Seek(0, SeekOrigin.Begin);
+                var sw = new Stopwatch();
 
                 // write it to the DB
+                sw.Start();
                 var docID = subject.WriteDocument(fileDataStream);
+                sw.Stop();
+                Console.WriteLine($"Write took {sw.Elapsed}");
 
                 // read it back
+                sw.Restart();
                 var resultStream = subject.ReadDocument(docID);
+                sw.Stop();
+                Console.WriteLine($"Seek took {sw.Elapsed}");
+
                 Assert.That(resultStream, Is.Not.Null, "Failed to find the document");
 
                 // compare the results
                 fileDataStream.Seek(0, SeekOrigin.Begin);
                 var expected = fileDataStream.ToArray();
+                
+                sw.Restart();
                 resultStream.CopyTo(actualStream);
+                sw.Stop();
+                Console.WriteLine($"File transfer took {sw.Elapsed}");
+
                 actualStream.Seek(0, SeekOrigin.Begin);
                 var actual = actualStream.ToArray();
 
@@ -207,7 +221,69 @@ namespace StreamDb.Tests
         [Test]
         public void can_write_a_path_entry_for_a_document_id ()
         {
-            Assert.Fail("NYI");
+            var sw = new Stopwatch();
+            using (var ms = new MemoryStream()){
+                var subject = new PageTable(ms);
+
+                var doc1 = Guid.NewGuid();
+                var doc2 = Guid.NewGuid();
+
+                sw.Restart();
+                var old = subject.BindPathToDocument("my/first/path", doc1);
+                sw.Stop();
+                Assert.That(old, Is.EqualTo(Guid.Empty), $"Got an unexpected result: {old}");
+                Console.WriteLine($"First write took {sw.Elapsed}");
+
+                sw.Restart();
+                var result = subject.BindPathToDocument("my/first/path", doc2);
+                sw.Stop();
+                Assert.That(result, Is.EqualTo(doc1), $"Expected {doc1}, but got {result}");
+                Console.WriteLine($"Second write took {sw.Elapsed}");
+            }
+        }
+
+        [Test]
+        public void can_query_a_document_by_path ()
+        {
+            byte[] frozenDB;
+            Guid originalId;
+
+            using (var fileDataStream = new MemoryStream())
+            using (var ms = new MemoryStream()){
+                var subject = new PageTable(ms);
+
+                // prepare a data stream that will span multiple pages
+                for (int i = 0; i < Page.PageDataCapacity * 3; i++)
+                {
+                    fileDataStream.WriteByte(unchecked((byte)i));
+                }
+                fileDataStream.Seek(0, SeekOrigin.Begin);
+
+                // write it to the DB
+                originalId = subject.WriteDocument(fileDataStream);
+
+                // #### Write a path ####
+                subject.BindPathToDocument("the document I want", originalId);
+
+
+                // write everything to a byte array
+                ms.Seek(0, SeekOrigin.Begin);
+                frozenDB = ms.ToArray();
+            }
+
+            // Read the DB back
+            using (var ms2 = new MemoryStream(frozenDB)){
+                var subject = new PageTable(ms2);
+
+                // find doc by path
+                var docId = subject.GetDocumentIdByPath("the document I want");
+                Assert.That(docId, Is.EqualTo(originalId), "Failed to find document by path");
+                
+                // read the file back it back
+                var resultStream = subject.ReadDocument(docId);
+
+                Assert.That(resultStream, Is.Not.Null, "Failed to find the document");
+            }
         }
 
     }
