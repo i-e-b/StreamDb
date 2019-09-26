@@ -543,14 +543,9 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <summary>
-        /// Present a stream to read from a document, recovered by ID.
-        /// Returns null if the document is not found.
+        /// Search the index for a page ID. Returns -1 if not found.
         /// </summary>
-        [CanBeNull]public Stream ReadDocument(Guid docId)
-        {
-            // walk the index page list, try to find an end page for the given ID.
-            // then skip to the start, and wrap in a page-reading stream implementation
-
+        public int GetPageIdFromDocumentId(Guid docId) {
             var index = GetIndexPageList();
 
             // Walk the index page list
@@ -561,13 +556,27 @@ namespace StreamDb.Internal.DbStructure
                     var ok = version.TryGetLink(0, out var pageId);
                     if (!ok) throw new Exception("Index version data was damaged");
 
-                    return new PageTableStream(this, GetPageRaw(pageId));
+                    return pageId;
                 }
 
                 // Failed to find, walk the chain
                 index = WalkIndexList(index, shouldAdd: false);
-                if (index == null) return null; // not found
+                if (index == null) return -1; // not found
             }
+        }
+
+        /// <summary>
+        /// Present a stream to read from a document, recovered by ID.
+        /// Returns null if the document is not found.
+        /// </summary>
+        [CanBeNull]public Stream ReadDocument(Guid docId)
+        {
+            // walk the index page list, try to find an end page for the given ID.
+            // then skip to the start, and wrap in a page-reading stream implementation
+
+            var pageId = GetPageIdFromDocumentId(docId);
+            if (pageId < 4) return null; // don't read invalid or core pages this way
+            return new PageTableStream(this, GetPageRaw(pageId));
         }
 
         /// <summary>

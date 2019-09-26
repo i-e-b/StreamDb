@@ -111,16 +111,102 @@ namespace StreamDb.Tests
 
         [Test]
         public void can_delete_a_chain_of_pages_from_its_start () {
-            Assert.Fail("NYI");
+            using (var fileDataStream = new MemoryStream())
+            using (var ms = new MemoryStream()){
+                var subject = new PageTable(ms);
+
+                // prepare a data stream that will span multiple pages
+                for (int i = 0; i < Page.PageDataCapacity * 3; i++)
+                {
+                    fileDataStream.WriteByte(unchecked((byte)i));
+                }
+                fileDataStream.Seek(0, SeekOrigin.Begin);
+
+                // write it to the DB
+                var docID = subject.WriteDocument(fileDataStream);
+
+                var pageId = subject.GetPageIdFromDocumentId(docID);
+                Assert.That(pageId, Is.GreaterThan(0), "Failed to find page");
+
+                // find the first page
+                var firstId = subject.GetPageRaw(pageId).FirstPageId;
+
+                // delete the chain
+                subject.DeletePageChain(firstId);
+
+                // next free page should be the first ID
+                var result = subject.GetFreePage();
+                Assert.That(result.OriginalPageId, Is.EqualTo(firstId));
+            }
         }
 
         [Test]
         public void can_delete_a_chain_of_pages_from_its_middle () {
-            Assert.Fail("NYI");
+            using (var fileDataStream = new MemoryStream())
+            using (var ms = new MemoryStream()){
+                var subject = new PageTable(ms);
+
+                // prepare a data stream that will span multiple pages
+                for (int i = 0; i < Page.PageDataCapacity * 3; i++)
+                {
+                    fileDataStream.WriteByte(unchecked((byte)i));
+                }
+                fileDataStream.Seek(0, SeekOrigin.Begin);
+
+                // write it to the DB
+                var docID = subject.WriteDocument(fileDataStream);
+
+                var endId = subject.GetPageIdFromDocumentId(docID);
+                Assert.That(endId, Is.GreaterThan(0), "Failed to find page");
+
+                // find the first page
+                var firstId = subject.GetPageRaw(endId).FirstPageId;
+                var nextId = subject.GetPageRaw(firstId).NextPageId;
+
+                // delete the chain
+                subject.DeletePageChain(nextId);
+
+                // next free page should be the first ID
+                var result = subject.GetFreePage();
+                Assert.That(result.OriginalPageId, Is.EqualTo(firstId));
+            }
         }
 
         [Test]
         public void can_delete_a_chain_of_pages_from_its_end () {
+            using (var fileDataStream = new MemoryStream())
+            using (var ms = new MemoryStream()){
+                var subject = new PageTable(ms);
+
+                // prepare a data stream that will span multiple pages
+                for (int i = 0; i < Page.PageDataCapacity * 3; i++)
+                {
+                    fileDataStream.WriteByte(unchecked((byte)i));
+                }
+                fileDataStream.Seek(0, SeekOrigin.Begin);
+
+                // write it to the DB
+                var docID = subject.WriteDocument(fileDataStream);
+
+                var endId = subject.GetPageIdFromDocumentId(docID);
+                Assert.That(endId, Is.GreaterThan(0), "Failed to find page");
+
+                // find the first page
+                var firstId = subject.GetPageRaw(endId).FirstPageId;
+
+                // delete the chain
+                subject.DeletePageChain(endId);
+
+                // next free page should be the first ID
+                var result = subject.GetFreePage();
+                Assert.That(result.OriginalPageId, Is.EqualTo(firstId));
+            }
+        }
+
+
+        [Test]
+        public void can_write_a_path_entry_for_a_document_id ()
+        {
             Assert.Fail("NYI");
         }
 
