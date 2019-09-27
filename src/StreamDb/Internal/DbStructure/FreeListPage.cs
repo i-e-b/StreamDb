@@ -62,7 +62,6 @@ namespace StreamDb.Internal.DbStructure
             for (int i = 0; i < Capacity; i++)
             {
                 if (_entries[i] == pageId) {
-                    Console.Write("D");
                     return true;
                 }
                 if (_entries[i] > 3) continue;

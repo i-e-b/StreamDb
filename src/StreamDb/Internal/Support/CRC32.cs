@@ -46,11 +46,13 @@ namespace StreamDb.Internal.Support
         private static uint CalculateHash([NotNull]uint[] table, uint seed, [NotNull]byte[] buffer, int start, int size)
         {
             var crc = seed;
-            for (int i = start; i < size; i++)
-                unchecked
+            unchecked
+            {
+                for (int i = start; i < size; i++)
                 {
-                    crc = (crc >> 8) ^ table[buffer[i] ^ crc & 0xff];
+                    crc = (crc >> 8) ^ table[buffer[i] ^ (crc & 0xff)];
                 }
+            }
             return crc;
         }
 

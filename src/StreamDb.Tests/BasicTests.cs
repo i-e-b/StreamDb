@@ -138,8 +138,8 @@ namespace StreamDb.Tests
         
         
 
-        [Test]
-        public void stress_test (){
+        [Test, Explicit("Slow test")]
+        public void stress_test_write (){
             using (var doc = MakeTestDocument())
             using (var ms = new MemoryStream())
             {
@@ -161,6 +161,32 @@ namespace StreamDb.Tests
 
                     Console.WriteLine($"Done. Filled database is {(ms.Length / 1048576.0):#.00}MB");
                 }
+            }
+        }
+        
+        [Test, Explicit("Slow test")]
+        public void stress_test_read (){
+            using (var doc = MakeTestDocument())
+            using (var ms = new MemoryStream())
+            {
+                var subject = Database.TryConnect(ms);
+
+                Console.WriteLine("Writing doc");
+                doc.Seek(0, SeekOrigin.Begin);
+                subject.WriteDocument("test/data-path/doc", doc);
+
+
+                // Read the same document a load of times
+                Console.WriteLine("Reading doc 10'000 times");
+                for (int i = 0; i < 5_000; i++)
+                {
+                    var ok = subject.Get("test/data-path/doc", out _);
+                    Assert.That(ok, Is.True);
+                    
+                    ok = subject.Get($"this document is not here #{i}", out _);
+                    Assert.That(ok, Is.False);
+                }
+                Console.WriteLine("Done");
             }
         }
 

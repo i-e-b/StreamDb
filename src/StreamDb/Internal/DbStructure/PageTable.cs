@@ -280,8 +280,6 @@ namespace StreamDb.Internal.DbStructure
             // try to re-use a page:
             var freeList = GetFreePageList();
 
-            // TODO: there is a leak here -- the free page table is filling up
-
             // Walk the free page list
             while (true)
             {
@@ -296,7 +294,7 @@ namespace StreamDb.Internal.DbStructure
 
                 // go to next free table page
                 freeList = GetPageView<FreeListPage>(freeList.NextPageId);
-                // TODO: if we empty one of the free pages, it should itself be freed.
+
                 if (freeList == null) break;
             }
 
@@ -327,8 +325,6 @@ namespace StreamDb.Internal.DbStructure
                         DocumentSequence = 0,
                         DocumentId = Guid.Empty
                     };
-                    p.UpdateCRC();
-
                     CommitPage(p, w);
                     return p;
                 }
@@ -371,7 +367,6 @@ namespace StreamDb.Internal.DbStructure
                     continue;
                 } else {
                     // commit back to storage
-                    free.UpdateCRC();
                     CommitPage(free);
                 }
 
@@ -417,8 +412,6 @@ namespace StreamDb.Internal.DbStructure
                 if (optionalContent != null) {
                     first.Write(optionalContent, 0, 0, optionalContent.Length);
                 }
-                first.UpdateCRC();
-
                 CommitPage(first);
                 return first;
             }
@@ -439,13 +432,10 @@ namespace StreamDb.Internal.DbStructure
             if (optionalContent != null) {
                 newPage.Write(optionalContent, 0, 0, optionalContent.Length);
             }
-            newPage.UpdateCRC();
-
             CommitPage(newPage);
 
             other.NextPageId = newPage.OriginalPageId; // race condition risk!
             other.Dirty = true;
-            other.UpdateCRC();
             CommitPage(other);
 
             return newPage;
@@ -467,9 +457,7 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         public void CommitPage(Page page) {
             if (page == null || page.OriginalPageId < 0) throw new Exception("Attempted to commit an invalid page");
-            if (!page.ValidateCrc()) throw new Exception("Attempted to commit a corrupted page");
-
-            // TODO: remove from free list?
+            page.UpdateCRC();
 
             var w = _storage.AcquireWriter();
             try {
@@ -509,7 +497,6 @@ namespace StreamDb.Internal.DbStructure
 
                 if (next.PageType == PageType.Invalid) { // first page
                     next.PageType = PageType.Data;
-                    next.UpdateCRC();
                     CommitPage(next);
                 }
 
@@ -698,7 +685,6 @@ namespace StreamDb.Internal.DbStructure
                     { // first page
                         next.PageType = PageType.PathLookup;
                         next.DocumentId = Page.PathLookupGuid;
-                        next.UpdateCRC();
                         CommitPage(next);
                     }
 

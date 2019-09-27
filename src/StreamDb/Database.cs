@@ -2,7 +2,6 @@
 using System.IO;
 using JetBrains.Annotations;
 using StreamDb.Internal.DbStructure;
-using StreamDb.Internal.Support;
 
 namespace StreamDb
 {

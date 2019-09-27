@@ -14,6 +14,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "_Info", "_Info", "{5D111578
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StreamDb.Tests", "src\StreamDb.Tests\StreamDb.Tests.csproj", "{FDEDD5A7-76B0-4110-8804-748BC6B97CA5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TracingApp", "src\TracingApp\TracingApp.csproj", "{4F61D0DF-53DC-4F4E-8F7A-59951BF61CF8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -28,6 +30,10 @@ Global
 		{FDEDD5A7-76B0-4110-8804-748BC6B97CA5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FDEDD5A7-76B0-4110-8804-748BC6B97CA5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FDEDD5A7-76B0-4110-8804-748BC6B97CA5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4F61D0DF-53DC-4F4E-8F7A-59951BF61CF8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4F61D0DF-53DC-4F4E-8F7A-59951BF61CF8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4F61D0DF-53DC-4F4E-8F7A-59951BF61CF8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4F61D0DF-53DC-4F4E-8F7A-59951BF61CF8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

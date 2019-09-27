@@ -35,7 +35,7 @@ A minimalist database that uses only Streams as storage, and can survive power l
 
 ## Notes:
 
-Need a 'dirty' mechanism for pages.
+Need a 'dirty' mechanism for pages -- the CRC checks are taking 50% of run time!
 
 For testing, a stream wrapper that stops writing at a random point (but still acts like it's writing). Run that loads of times to fuzz.
 
