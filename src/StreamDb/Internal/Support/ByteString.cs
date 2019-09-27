@@ -10,7 +10,7 @@ namespace StreamDb.Internal.Support
         /// <inheritdoc />
         public byte[] ToBytes() {
             if (_str == null) return new byte[0];
-            return Encoding.UTF8?.GetBytes(_str);
+            return Encoding.UTF8?.GetBytes(_str) ?? new byte[0];
         }
 
         /// <inheritdoc />

@@ -127,6 +127,8 @@ namespace StreamDb.Tests
         
             var bytes = source.ToBytes();
 
+            Console.WriteLine(bytes.ToHexString());
+
             var result = new PathIndex<ByteString>();
             result.FromBytes(bytes);
 
@@ -189,6 +191,65 @@ namespace StreamDb.Tests
             Assert.That((Guid)source.Get("/etc/init.d/01-system.sh"), Is.EqualTo(guid1));
             Assert.That((Guid)source.Get("/etc/init.d/02-user.sh"), Is.EqualTo(guid2));
             Assert.That(source.Get("/etc/init.d/03-custom.sh"), Is.EqualTo(null));
+        }
+
+        [Test]
+        public void can_incrementally_extend_the_serialised_form () {
+
+            // 1. Write a few paths, and serialise to an array
+            // 2. Write a few more path, serialise to another array
+            // 3. Make a third array, from the head of the first and the tail of the second
+            // 4. Deserialise from the 3rd array, check it is fully functional.
+
+            // NOTE: this does not cover changes to pre-existing paths!
+
+            var source = new PathIndex<ByteString>();
+
+            source.Add("my/path/1", "value1");
+            source.Add("my/path/2", "value2");
+            source.Add("my/other/path", "value3");
+            source.Add("my/other/path/longer", "value4");
+
+            // get originals
+            var bytes1 = source.ToBytes();
+
+            source.Add("my/path/3", "value5");
+            source.Add("my/path/4", "value6");
+            source.Add("my/third/path", "value7");
+            source.Add("my/other/path/longer-still", "value8");
+
+            // get extended
+            var bytes2 = source.ToBytes();
+            Assert.That(bytes2.Length, Is.GreaterThan(bytes1.Length), "Adding entries did not change the serialised size");
+
+            // TODO:
+            // The tighter serial representation is better, but we still can's do simple extend-only.
+            // This is because the tree can extend at any point, so our flags and forking can change
+            // anywhere is the structure.
+            // 
+            // It might not be worth making it truely forward-only. More thinking to do.
+            
+            Console.WriteLine("### ONE ###");
+            Console.WriteLine(bytes1.ToHexString());
+            Console.WriteLine("\r\n### TWO ###");
+            Console.WriteLine(bytes2.ToHexString());
+
+            // make a new one with only the added bytes
+            var bytes3 = new byte[bytes2.Length];
+            for (int i = 0; i < bytes1.Length; i++) { bytes3[i] = bytes1[i]; }
+            for (int i = bytes1.Length; i < bytes2.Length; i++) { bytes3[i] = bytes2[i]; }
+
+            var result = new PathIndex<ByteString>();
+            result.FromBytes(bytes3);
+
+            Assert.That((string)result.Get("my/path/1"), Is.EqualTo("value1"));
+            Assert.That((string)result.Get("my/path/2"), Is.EqualTo("value2"));
+            Assert.That((string)result.Get("my/other/path"), Is.EqualTo("value3"));
+            Assert.That((string)result.Get("my/other/path/longer"), Is.EqualTo("value4"));
+            Assert.That((string)result.Get("my/path/3"), Is.EqualTo("value5"));
+            Assert.That((string)result.Get("my/path/4"), Is.EqualTo("value6"));
+            Assert.That((string)result.Get("my/third/path"), Is.EqualTo("value7"));
+            Assert.That((string)result.Get("my/other/path/longer-still"), Is.EqualTo("value8"));
         }
 
         [Test]

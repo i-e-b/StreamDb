@@ -7,40 +7,27 @@ namespace StreamDb.Internal.Support
         public const uint DefaultPolynomial = 0xedb88320;
         public const uint DefaultSeed = 0xffffffff;
 
-        private static uint[] defaultTable;
+        [NotNull]private static readonly uint[] defaultTable;
 
-        public static uint Compute(byte[] buffer)
+        static Crc32()
         {
-            if (buffer == null) return 0;
-            return ~CalculateHash(InitializeTable(DefaultPolynomial), DefaultSeed, buffer, 0, buffer.Length);
-        }
-
-        public static uint Compute(uint seed, byte[] buffer)
-        {
-            if (buffer == null) return 0;
-            return ~CalculateHash(InitializeTable(DefaultPolynomial), seed, buffer, 0, buffer.Length);
-        }
-
-        public static uint Compute(uint polynomial, uint seed, byte[] buffer)
-        {
-            if (buffer == null) return 0;
-            return ~CalculateHash(InitializeTable(polynomial), seed, buffer, 0, buffer.Length);
-        }
-
-        [NotNull]private static uint[] InitializeTable(uint polynomial)
-        {
-            if (polynomial == DefaultPolynomial && defaultTable != null) return defaultTable;
-
             var createTable = new uint[256];
             for (int i = 0; i < 256; i++)
             {
                 var entry = (uint)i;
-                for (int j = 0; j < 8; j++) entry = (entry & 1) == 1 ? (entry >> 1) ^ polynomial : entry >> 1;
+                for (int j = 0; j < 8; j++) entry = (entry & 1) == 1 ? (entry >> 1) ^ DefaultPolynomial : entry >> 1;
                 createTable[i] = entry;
             }
 
-            if (polynomial == DefaultPolynomial) defaultTable = createTable;
-            return createTable;
+            defaultTable = createTable;
+        }
+
+        // TODO: Look at https://github.com/stbrumme/crc32/blob/master/Crc32.cpp
+        //        We should be able to get a much faster CRC
+        public static uint Compute(byte[] buffer)
+        {
+            if (buffer == null) return 0;
+            return ~CalculateHash(defaultTable, DefaultSeed, buffer, 0, buffer.Length);
         }
 
         private static uint CalculateHash([NotNull]uint[] table, uint seed, [NotNull]byte[] buffer, int start, int size)
@@ -54,16 +41,6 @@ namespace StreamDb.Internal.Support
                 }
             }
             return crc;
-        }
-
-        public static byte[] UInt32ToBigEndianBytes(uint x)
-        {
-            return new[] {
-                (byte)((x >> 24) & 0xff),
-                (byte)((x >> 16) & 0xff),
-                (byte)((x >> 8) & 0xff),
-                (byte)(x & 0xff)
-            };
         }
     }
 }

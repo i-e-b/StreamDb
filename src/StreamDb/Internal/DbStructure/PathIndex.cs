@@ -24,8 +24,6 @@ namespace StreamDb.Internal.DbStructure
         const byte HAS_DATA = 1 << 3;
 
         const long INDEX_MARKER = 0xFACEFEED; // 32 bits of zero, then the magic number
-        const long DATA_MARKER = 0xBACCFACE;
-        const long END_MARKER = 0xDEADBEEF;
 
         const int EMPTY_OFFSET = -1; // any pointer that is not set
 
@@ -280,27 +278,6 @@ namespace StreamDb.Internal.DbStructure
             return sb.ToString();
         }
 
-        /// <summary>
-        /// Write a serialised form to the stream at its current position
-        /// </summary>
-        public void WriteTo(Stream stream)
-        {
-            if (stream == null) return;
-            using (var w = new BinaryWriter(stream, Encoding.UTF8, true))
-            {
-                // TODO: I would like an append-only format for this,
-                //        so we don't have to re-write the whole structure
-                //        for every change, wasting time and space.
-                w.Write(INDEX_MARKER);
-                w.Write(_nodes.Count);
-                foreach (var node in _nodes) { WriteIndexNode(node, w); }
-
-                w.Write(DATA_MARKER);
-                w.Write(_entries.Count);
-                foreach (var entry in _entries) { WriteDataEntry(entry, w); }
-                w.Write(END_MARKER);
-            }
-        }
 
         /// <summary>
         /// Read a stream (previously written by `WriteTo`) from its current position
@@ -314,29 +291,46 @@ namespace StreamDb.Internal.DbStructure
             return result;
         }
 
+        /// <summary>
+        /// Write a serialised form to the stream at its current position
+        /// </summary>
+        public void WriteTo(Stream stream)
+        {
+            if (stream == null) return;
+            using (var w = new BinaryWriter(stream, Encoding.UTF8, true))
+            {
+                // New plan: (keep the nodes and entries together in the serialised form)
+
+                w.Write(INDEX_MARKER);
+                w.Write(_nodes.Count);
+                foreach (var node in _nodes)
+                {
+                    WriteIndexNode(node, w);
+                    if (node.DataIdx > EMPTY_OFFSET) {
+                        WriteDataEntry(_entries[node.DataIdx], w); 
+                    }
+                }
+            }
+        }
+
         private static void OverwriteFromStream([NotNull]Stream stream, [NotNull]PathIndex<T> result)
         {
             using (var r = new BinaryReader(stream, Encoding.UTF8, true))
             {
+                // New method -- keep the data nodes next to their index nodes
                 if (r.ReadInt64() != INDEX_MARKER) throw new Exception("Input stream missing index marker");
                 var nodeCount = r.ReadInt32();
                 if (nodeCount < 0) throw new Exception("Input stream node count invalid");
-
+                
                 for (int i = 0; i < nodeCount; i++)
                 {
-                    result._nodes.Add(ReadIndexNode(r));
+                    var node = ReadIndexNode(r);
+                    result._nodes.Add(node);
+                    if (node.DataIdx > EMPTY_OFFSET) {
+                        node.DataIdx = result._entries.Count;
+                        result._entries.Add(ReadDataEntry(r));
+                    }
                 }
-
-                if (r.ReadInt64() != DATA_MARKER) throw new Exception("Input stream missing data marker");
-                var entryCount = r.ReadInt32();
-                if (entryCount < 0) throw new Exception("Input stream node count invalid");
-
-                for (int i = 0; i < entryCount; i++)
-                {
-                    result._entries.Add(ReadDataEntry(r));
-                }
-
-                if (r.ReadInt64() != END_MARKER) throw new Exception("Input stream missing end marker");
             }
         }
 
@@ -361,7 +355,7 @@ namespace StreamDb.Internal.DbStructure
             w.Write(bytes);
         }
 
-        private static Node ReadIndexNode([NotNull]BinaryReader r)
+        [NotNull]private static Node ReadIndexNode([NotNull]BinaryReader r)
         {
             var node = new Node {Ch = r.ReadChar()};
 
@@ -370,7 +364,7 @@ namespace StreamDb.Internal.DbStructure
             if ((flags & HAS_MATCH) > 0) node.Match = r.ReadInt32();
             if ((flags & HAS_LEFT) > 0) node.Left = r.ReadInt32();
             if ((flags & HAS_RIGHT) > 0) node.Right = r.ReadInt32();
-            if ((flags & HAS_DATA) > 0) node.DataIdx = r.ReadInt32();
+            if ((flags & HAS_DATA) > 0) node.DataIdx = 1;// we rebuild this implicitly
 
             return node;
         }
@@ -389,7 +383,6 @@ namespace StreamDb.Internal.DbStructure
             if (node.Match >= 0) w.Write(node.Match);
             if (node.Left >= 0) w.Write(node.Left);
             if (node.Right >= 0) w.Write(node.Right);
-            if (node.DataIdx >= 0) w.Write(node.DataIdx);
         }
 
         /// <inheritdoc />
