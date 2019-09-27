@@ -62,7 +62,12 @@ namespace StreamDb
         {
             var id = _pages.WriteDocument(data);
             if (id == Guid.Empty) throw new Exception("Failed to write document data");
-            _pages.BindPathToDocument(path, id);
+            var oldId = _pages.BindPathToDocument(path, id);
+
+            if (oldId != Guid.Empty && oldId != id) {
+                // replaced an existing document
+                _pages.DeleteDocument(oldId);
+            }
         }
 
         /// <summary>

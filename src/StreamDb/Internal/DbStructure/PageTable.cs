@@ -280,11 +280,14 @@ namespace StreamDb.Internal.DbStructure
             // try to re-use a page:
             var freeList = GetFreePageList();
 
+            // TODO: there is a leak here -- the free page table is filling up
+
             // Walk the free page list
             while (true)
             {
                 var pageId = freeList.View.GetNext();
                 if (pageId > 0) { 
+                    CommitPage(freeList);
                     var page = GetPageRaw(pageId);
                     if (page == null) break;
                     return page;
@@ -365,6 +368,7 @@ namespace StreamDb.Internal.DbStructure
                 if (!ok) {
                     // need to grow free list
                     free = WalkFreeList(free);
+                    continue;
                 } else {
                     // commit back to storage
                     free.UpdateCRC();
@@ -401,7 +405,7 @@ namespace StreamDb.Internal.DbStructure
             if (other == null) {
                 // special case -- make the first page of a doc
                 // allowing this makes logic elsewhere a lot easier to follow
-                var first = AllocatePage();
+                var first = GetFreePage();
                 first.PrevPageId = -1;
                 first.DocumentId = Guid.NewGuid();
                 first.FirstPageId = first.OriginalPageId;
@@ -423,7 +427,7 @@ namespace StreamDb.Internal.DbStructure
             if (((int)other.PageType & (int)PageType.Free) == (int)PageType.Free) throw new Exception("Tried to extend a freed page");
             if (optionalContent?.Length > Page.PageDataCapacity) throw new Exception("New page content too large");
 
-            var newPage = AllocatePage();
+            var newPage = GetFreePage();
             newPage.PrevPageId = other.OriginalPageId;
             newPage.DocumentId = other.DocumentId;
             newPage.FirstPageId = other.FirstPageId;
@@ -736,6 +740,12 @@ namespace StreamDb.Internal.DbStructure
             _pathIndexCache = PathIndex<SerialGuid>.ReadFrom(source);
 
             return _pathIndexCache;
+        }
+
+        public void DeleteDocument(Guid oldId)
+        {
+            var pageId = GetPageIdFromDocumentId(oldId);
+            if (pageId > 3) DeletePageChain(pageId);
         }
     }
 }

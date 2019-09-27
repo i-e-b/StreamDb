@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using JetBrains.Annotations;
 using StreamDb.Internal.Support;
 
@@ -43,7 +44,7 @@ namespace StreamDb.Internal.DbStructure
         {
             for (int i = 0; i < Capacity; i++)
             {
-                if (_entries[i] <= 3) continue;
+                if (_entries[i] < 3) continue;
 
                 var found = _entries[i];
                 _entries[i] = 0;
@@ -57,9 +58,13 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         public bool TryAdd(int pageId)
         {
-            if (pageId < 4) return false;
+            if (pageId < 3) return false;
             for (int i = 0; i < Capacity; i++)
             {
+                if (_entries[i] == pageId) {
+                    Console.Write("D");
+                    return true;
+                }
                 if (_entries[i] > 3) continue;
 
                 _entries[i] = pageId;
@@ -79,7 +84,7 @@ namespace StreamDb.Internal.DbStructure
                     w.Write(_entries[i]);
                 }
                 ms.Seek(0, SeekOrigin.Begin);
-                return ms.ToArray();
+                return ms.ToArray() ?? throw new InvalidOperationException();
             }
         }
 

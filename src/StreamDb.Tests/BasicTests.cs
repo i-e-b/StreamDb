@@ -107,11 +107,62 @@ namespace StreamDb.Tests
         }
 
         [Test]
-        public void trying_to_open_a_damaged_stream_gives_a_failure_result (){
+        public void trying_to_read_a_damaged_stream_gives_a_failure_result (){
             // at which point, you'd have a 'recover' method to call
-            Assert.Fail("NYI");
+
+
+            // Build a db in ram, then write over 1 byte per page
+            using (var ms = new MemoryStream())
+            {
+                var subject = Database.TryConnect(ms);
+
+                Console.WriteLine($"Empty database is {ms.Length / 1024}kb");
+
+                // Write a document
+                using (var docStream = MakeTestDocument()){
+                    Console.WriteLine($"Writing {docStream.Length / 1024}kb document");
+                    subject.WriteDocument("this document will be damaged", docStream);
+                }
+
+                // now damage the stream
+                for (int i = 0; i < ms.Length; i+= 4000)
+                {
+                    ms.Seek(i, SeekOrigin.Begin);
+                    ms.WriteByte(0);
+                }
+
+                // finally, try to read the document back
+                Assert.Throws<Exception>(()=>{subject.Get("this document will be damaged", out _);}, "Database did not notice damage");
+            }
         }
         
+        
+
+        [Test]
+        public void stress_test (){
+            using (var doc = MakeTestDocument())
+            using (var ms = new MemoryStream())
+            {
+                var subject = Database.TryConnect(ms);
+
+                Console.WriteLine($"Empty database is {ms.Length / 1024}kb");
+
+                // write lots of documents, and overwrite them a lot of times
+                for (int overwrites = 0; overwrites < 10; overwrites++)
+                {
+                    Console.Write("Writing a 100 document block");
+
+                    for (int i = 0; i < 100; i++)
+                    {
+                        Console.Write(".");
+                        doc.Seek(0, SeekOrigin.Begin);
+                        subject.WriteDocument($"testdata-{i}", doc);
+                    }
+
+                    Console.WriteLine($"Done. Filled database is {(ms.Length / 1048576.0):#.00}MB");
+                }
+            }
+        }
 
         private static Stream MakeTestDocument()
         {
