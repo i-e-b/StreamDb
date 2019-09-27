@@ -32,13 +32,19 @@ namespace StreamDb.Tests
                 Assert.That(ms.Length, Is.GreaterThan(0), "Stream was not populated");
                 Console.WriteLine($"Filled database is {ms.Length / 1024}kb, with document data of {trueData / 1024}kb");
 
+                var recoveredData = 0;
+
                 var found = subject.Get("images/staff/phil's face", out var dataStream);
                 Assert.That(found, Is.True, "Failed to recover first document");
+                recoveredData += (int)dataStream.Length;
                 Console.WriteLine($"Recovered first document, size = {dataStream.Length / 1024}kb");
                 
                 found = subject.Get("images/staff/paul's mum", out dataStream);
                 Assert.That(found, Is.True, "Failed to recover second document");
+                recoveredData += (int)dataStream.Length;
                 Console.WriteLine($"Recovered second document, size = {dataStream.Length / 1024}kb");
+
+                Assert.That(recoveredData, Is.EqualTo(trueData), $"Recovered data was a different size to stored originals {trueData} in, {recoveredData} out.");
             }
         }
 
@@ -125,7 +131,7 @@ namespace StreamDb.Tests
                 }
 
                 // now damage the stream
-                for (int i = 0; i < ms.Length; i+= 4000)
+                for (int i = 0; i < ms.Length; i+= 2000)
                 {
                     ms.Seek(i, SeekOrigin.Begin);
                     ms.WriteByte(0);

@@ -86,7 +86,7 @@ namespace StreamDb.Tests
                 var subject = new PageTable(ms);
 
                 // prepare a data stream that will span multiple pages
-                for (int i = 0; i < Page.PageDataCapacity * 3; i++)
+                for (int i = 0; i < Page.PageDataCapacity * 3.5; i++) // ensure we write a partial page at the end
                 {
                     fileDataStream.WriteByte(unchecked((byte)i));
                 }

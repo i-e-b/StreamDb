@@ -319,7 +319,7 @@ namespace StreamDb.Internal.DbStructure
                     {
                         OriginalPageId = (int) pageCount, // very thread sensitive!
                         PageType = PageType.Invalid,
-                        NextPageId = -1,
+                        NextPageId = Page.NextIdForEmptyPage,
                         PrevPageId = -1,
                         FirstPageId = (int) pageCount, // should update if chaining
                         DocumentSequence = 0,
@@ -386,7 +386,7 @@ namespace StreamDb.Internal.DbStructure
             }
     
             // end of chain. Extend it.
-            var newPage = ChainPage(freeLink, new FreeListPage().ToBytes());
+            var newPage = ChainPage(freeLink, new FreeListPage().ToBytes(), -1);
             return Page<FreeListPage>.FromRaw(newPage);
         }
 
@@ -396,7 +396,14 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         /// <param name="other">End of a page chain.</param>
         /// <param name="optionalContent">Data bytes to insert, if any</param>
-        [NotNull]public Page ChainPage([CanBeNull]Page other, [CanBeNull]byte[] optionalContent) {
+        /// <param name="contentLength">Length of data to use. To use entire buffer, you can pass -1</param>
+        [NotNull]public Page ChainPage([CanBeNull] Page other, [CanBeNull] byte[] optionalContent, int contentLength) {
+            if (optionalContent == null) contentLength = 0;
+            else if (contentLength > optionalContent.Length) throw new Exception("Page content length requested is outside of buffer provided");
+            else if (contentLength < 0) contentLength = optionalContent.Length; // allow `-1` for whole buffer
+
+            var nextPageValue = Page.NextIdForEmptyPage + contentLength;
+
             if (other == null) {
                 // special case -- make the first page of a doc
                 // allowing this makes logic elsewhere a lot easier to follow
@@ -404,13 +411,13 @@ namespace StreamDb.Internal.DbStructure
                 first.PrevPageId = -1;
                 first.DocumentId = Guid.NewGuid();
                 first.FirstPageId = first.OriginalPageId;
-                first.NextPageId = -1;
+                first.NextPageId = nextPageValue;
                 first.PageType = PageType.Invalid;
                 first.Dirty = true;
                 first.DocumentSequence = 0;
 
                 if (optionalContent != null) {
-                    first.Write(optionalContent, 0, 0, optionalContent.Length);
+                    first.Write(optionalContent, 0, 0, contentLength);
                 }
                 CommitPage(first);
                 return first;
@@ -424,13 +431,13 @@ namespace StreamDb.Internal.DbStructure
             newPage.PrevPageId = other.OriginalPageId;
             newPage.DocumentId = other.DocumentId;
             newPage.FirstPageId = other.FirstPageId;
-            newPage.NextPageId = -1;
+            newPage.NextPageId = nextPageValue;
             newPage.PageType = other.PageType;
             newPage.Dirty = true;
             newPage.DocumentSequence = (ushort) (other.DocumentSequence + 1);
 
             if (optionalContent != null) {
-                newPage.Write(optionalContent, 0, 0, optionalContent.Length);
+                newPage.Write(optionalContent, 0, 0, contentLength);
             }
             CommitPage(newPage);
 
@@ -492,8 +499,9 @@ namespace StreamDb.Internal.DbStructure
             // build new page chain for data:
             Page page = null;
             var buf = new byte[Page.PageDataCapacity];
-            while (docDataStream.Read(buf,0,buf.Length) > 0) {
-                var next = ChainPage(page, buf);
+            var bytes = 0;
+            while ((bytes = docDataStream.Read(buf,0,buf.Length)) > 0) {
+                var next = ChainPage(page, buf, bytes);
 
                 if (next.PageType == PageType.Invalid) { // first page
                     next.PageType = PageType.Data;
@@ -546,7 +554,7 @@ namespace StreamDb.Internal.DbStructure
     
             // end of chain. Extend it?
             if (!shouldAdd) return null;
-            var newPage = ChainPage(indexLink, new IndexPage().ToBytes());
+            var newPage = ChainPage(indexLink, new IndexPage().ToBytes(), -1);
             return Page<IndexPage>.FromRaw(newPage);
         }
 
@@ -679,7 +687,7 @@ namespace StreamDb.Internal.DbStructure
                 var buf = new byte[Page.PageDataCapacity];
                 while (data.Read(buf, 0, buf.Length) > 0)
                 {
-                    var next = ChainPage(page, buf);
+                    var next = ChainPage(page, buf, -1);
 
                     if (next.PageType == PageType.Invalid)
                     { // first page

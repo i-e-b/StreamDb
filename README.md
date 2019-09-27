@@ -30,7 +30,7 @@ A minimalist database that uses only Streams as storage, and can survive power l
 
 * [ ] Re-write path lookup serialisation, so that it's append only
 * [ ] Improve page structure to support more robust versioning
-* [ ] Support partly-full pages at the page header level
+* [x] Support partly-full pages at the page header level
 * [ ] Improve data transport to reduce copying and GC
 
 ## Notes:

@@ -5,6 +5,9 @@ using StreamDb.Internal.DbStructure;
 
 namespace StreamDb.Internal.Support
 {
+    /// <summary>
+    /// Stream implementation that reads from a document chain in a PageTable
+    /// </summary>
     public class PageTableStream : Stream {
         [NotNull]private readonly PageTable _parent;
         [NotNull]private readonly Page _endPage;
@@ -46,7 +49,7 @@ namespace StreamDb.Internal.Support
             {
                 var data = page.GetData();
 
-                var chunkEnd = Math.Min(Page.PageDataCapacity, chunkOffset + remaining);
+                var chunkEnd = Math.Min(page.PageDataLength, chunkOffset + remaining);
                 for (int i = chunkOffset; i < chunkEnd; i++)
                 {
                     buffer[read+offset] = data[i];
@@ -95,8 +98,7 @@ namespace StreamDb.Internal.Support
         {
             get
             {
-                // TODO: subtract some from the last page based on doc size
-                return (_endPage.DocumentSequence + 1) * Page.PageDataCapacity;
+                return (_endPage.DocumentSequence * Page.PageDataCapacity) + _endPage.PageDataLength;
             }
         }
 

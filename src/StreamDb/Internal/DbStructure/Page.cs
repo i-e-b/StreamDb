@@ -58,8 +58,22 @@ namespace StreamDb.Internal.DbStructure
     /// </summary>
     public class Page : IByteSerialisable {
 
+        /// <summary>
+        /// Size of a page in storage, including all headers and data
+        /// </summary>
         public const int PageRawSize = 4096; // 4k data, to fit in a typical VM page
-        public const int PageDataCapacity = 4061; // 4k data - 35 bytes of header
+        /// <summary>
+        /// Size of page headers
+        /// </summary>
+        public const int PageHeadersSize = 35; // All the metadata for a page
+        /// <summary>
+        /// Maximum data capacity of a page
+        /// </summary>
+        public const int PageDataCapacity = PageRawSize - PageHeadersSize; // 4k data - 35 bytes of header
+        /// <summary>
+        /// Value for NextPageId if the page is empty
+        /// </summary>
+        public const int NextIdForEmptyPage = -1 - PageDataCapacity;
 
         /// <summary> Special ID for the root page / root document of the database </summary>
         public static readonly Guid RootDocumentGuid = new Guid(new byte[] {0x57,0x2e,0xfe,0xed,0xfa,0xce,0xda,0x7a, 0, 0, 0, 0, 0, 0, 0, 0 }); // matches `HEADER_MAGIC` in PageTable.cs
@@ -92,13 +106,14 @@ namespace StreamDb.Internal.DbStructure
         168      21    [PageType:     byte] <-- what does the 'data' part represent?
         184      23    [DocSeq:     uint16] <-- position in the document (uint16 limits documents to 256MB each. Used for recovery)
         216      27    [Prev:        int32] <-- previous page in the sequence ( -1 if this is the start )
-        248      31    [Next:        int32] <-- next page in the sequence ( -1 if this is the end )
+        248      31    [Next:        int32] <-- next page in the sequence ( negative if this is the end )
         280      35    [CRC32:      uint32] <-- CRC of the entire page (including headers)
       32832    4104    [data:   byte[4096]] <-- page contents (interpret based on PageType)
 
             */
 
         [NotNull] protected internal readonly byte[] _data;
+        //[NotNull] protected internal readonly byte[] _data;
 
         public Page() { _data = new byte[PageRawSize]; }
 
@@ -148,12 +163,11 @@ namespace StreamDb.Internal.DbStructure
         
         // TODO: The "NextPageId" should be protected from races somehow.
         /// <summary>
-        /// next page in the sequence ( -1 if this is the end )
+        /// next page in the sequence ( negative if this is the end )
+        /// <para></para>
+        /// If this is the last page in a chain, the exact negative value gives the length of data in the page.
+        /// `-1` = page is full, `-2` = page is one byte short of full ... `-PageDataCapacity` = page contains only 1 byte
         /// </summary>
-        /// <remarks>
-        /// We need a length parameter only on the *last* page of a document. We could use a
-        /// negative value here for that.
-        /// </remarks>
         public int NextPageId { 
             get { return BitConverter.ToInt32(_data, NEXT_LNK); } 
             set { Unslice(BitConverter.GetBytes(value), NEXT_LNK); }
@@ -166,6 +180,15 @@ namespace StreamDb.Internal.DbStructure
         public uint CrcHash { 
             get { return BitConverter.ToUInt32(_data, CRC_HASH); } 
             set { Unslice(BitConverter.GetBytes(value), CRC_HASH); }
+        }
+
+        /// <summary>
+        /// Length of data in this page. Calculated from `NextPageId`. This is not written to storage.
+        /// </summary>
+        public int PageDataLength { get {
+                if (NextPageId >= 0) return PageDataCapacity; // assume the page is full if it continues
+                return PageDataCapacity + NextPageId + 1;
+            }
         }
 
         /// <summary>
