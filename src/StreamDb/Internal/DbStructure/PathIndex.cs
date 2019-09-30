@@ -194,12 +194,13 @@ namespace StreamDb.Internal.DbStructure
                 curr = next;
 
                 var ch = path[cpos];
-                next = BuildStep(curr, ch, ref cpos);
+                var isLast = cpos == path.Length - 1;
+                next = BuildStep(curr, ch, isLast, ref cpos);
             }
             return curr;
         }
 
-        private int BuildStep(int idx, char ch, ref int matchIncr)
+        private int BuildStep(int idx, char ch, bool isLast, ref int matchIncr)
         {
             if (_nodes.Count < 1) { return NewIndexNode(ch); } // empty
 
@@ -208,14 +209,14 @@ namespace StreamDb.Internal.DbStructure
             if (inspect.Ch == 0) { // empty match. Fill it in
                 inspect.Ch = ch;
                 if (inspect.Match > EMPTY_OFFSET) throw new Exception("invalid match structure");
-                inspect.Match = NewEmptyIndex(); // next empty match
+                if (!isLast) inspect.Match = NewEmptyIndex(); // next empty match ready for the rest of the string (only if there is more string)
                 return idx;
             }
 
             if (inspect.Ch == ch)
             {
                 matchIncr++;
-                if (inspect.Match < 0) { inspect.Match = NewEmptyIndex(); }
+                if (inspect.Match < 0 && !isLast) { inspect.Match = NewEmptyIndex(); }
                 return inspect.Match;
             }
 
@@ -226,7 +227,7 @@ namespace StreamDb.Internal.DbStructure
 
                 // add new node for this value, increment match
                 inspect.Left = NewIndexNode(ch);
-                _nodes[inspect.Left].Match = NewEmptyIndex();
+                if (!isLast) _nodes[inspect.Left].Match = NewEmptyIndex();
                 return inspect.Left;
             }
 
@@ -234,7 +235,7 @@ namespace StreamDb.Internal.DbStructure
             if (inspect.Right >= 0) return inspect.Right;
             // add new node for this value, increment match
             inspect.Right = NewIndexNode(ch);
-            _nodes[inspect.Right].Match = NewEmptyIndex();
+            if (!isLast) _nodes[inspect.Right].Match = NewEmptyIndex();
             return inspect.Right;
         }
 
@@ -365,7 +366,7 @@ namespace StreamDb.Internal.DbStructure
                         dataIndex++;
                     }
 
-                    w.Write(INDEX_MARKER);
+
                     var node = _nodes[i];
 
                     // mark up the backlink meta data
@@ -382,6 +383,7 @@ namespace StreamDb.Internal.DbStructure
                         linkMeta[node.Match] = new BackLink {Type = BackLinkType.Match, Position = i};
                     }
 
+                    w.Write(INDEX_MARKER);
 
                     w.Write(node.Ch);
                     w.Write(node.DataIdx); // will be -1 if no data. We should be recovering the same entry indexes.
