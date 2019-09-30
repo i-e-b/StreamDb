@@ -227,7 +227,12 @@ namespace StreamDb.Tests
             // This is because the tree can extend at any point, so our flags and forking can change
             // anywhere is the structure.
             // 
-            // It might not be worth making it truely forward-only. More thinking to do.
+            // Maybe we could use reverse pointers in the serialised form?
+            // Plan:
+            // Have a temp array 1:1 with the entries array. Each slot holds one of [ no-link | left | right | middle ] and an index.
+            // When we serialise, we don't write the forward links, but fill in the entry for the target.
+            // If the entry we are serialising has something other than 'no-link' in its slot, we write that in the output at that point.
+            // When deserialising, when we come across a back link, we fill in the reverse target to make it a forwards link again.
             
             Console.WriteLine("### ONE ###");
             Console.WriteLine(bytes1.ToHexString());
