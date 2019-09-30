@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using JetBrains.Annotations;
 using StreamDb.Internal.Support;
@@ -17,16 +18,16 @@ namespace StreamDb.Internal.DbStructure
     /// </remarks>
     public class PathIndex<T>: IByteSerialisable where T : IByteSerialisable, new()
     {
-        // Flag values
-        const byte HAS_MATCH = 1 << 0;
-        const byte HAS_LEFT = 1 << 1;
-        const byte HAS_RIGHT = 1 << 2;
-        const byte HAS_DATA = 1 << 3;
-
-        const long INDEX_MARKER = 0xFACEFEED; // 32 bits of zero, then the magic number
+        // Serialisation tags:
+        const byte START_MARKER = 0xFF;
+        const byte END_MARKER   = 0x55;
+        const byte INDEX_MARKER = 0xF0;
+        const byte DATA_MARKER  = 0x0F;
 
         const int EMPTY_OFFSET = -1; // any pointer that is not set
 
+        /// <summary> Trie node, in memory representation (forward links) </summary>
+        /// <remarks>The serialised form used in storage is very different, and uses back-pointing links</remarks>
         private class Node
         {
             public char Ch; // the path character at this step
@@ -34,11 +35,43 @@ namespace StreamDb.Internal.DbStructure
             public int DataIdx; // Index into entries array. If -1, this is not a path endpoint
             public Node() { Left = Match = Right = DataIdx = EMPTY_OFFSET; }
         }
+        
+        enum BackLinkType:byte { None=0, Left=0b11, Right = 0b1100, Match = 0b110000 }
+        struct BackLink { 
+            /// <summary> Absolution position of the parent entry that contained the original forward link </summary>
+            public int Position;
+            /// <summary> Which branch was this child on? </summary>
+            public BackLinkType Type;
+        }
+
+        /// <summary> Data of type `T`, plus some book-keeping data </summary>
+        private class Entry {
+            /// <summary> The data of this entry. This is serialised. </summary>
+            public T Data;
+            /// <summary> The length of the `nodes` array when this entry was added </summary>
+            /// <remarks> This is not serialised. We use it for sorting, and is restored implicitly when deserialising. </remarks>
+            public int NodePosition;
+            /// <summary> Original position </summary>
+            public int EntryOrder;
+        }
+        
+        /// <summary>
+        /// Provides a stable sort over entry metadata
+        /// </summary>
+        class EntrySerialOrder : IComparer<Entry> {
+            /// <inheritdoc />
+            public int Compare(Entry x, Entry y)
+            {
+                if (x == null || y == null) return 0; // should never happen
+                if (x.NodePosition == y.NodePosition) return x.EntryOrder.CompareTo(y.EntryOrder);
+                return x.NodePosition.CompareTo(y.NodePosition);
+            }
+        }
 
         [NotNull, ItemNotNull]private readonly List<Node> _nodes;
-        [NotNull, ItemNotNull]private readonly List<T> _entries;
+        [NotNull, ItemNotNull]private readonly List<Entry> _entries;
 
-        public PathIndex() { _nodes = new List<Node>(); _entries = new List<T>(); }
+        public PathIndex() { _nodes = new List<Node>(); _entries = new List<Entry>(); }
 
         /// <summary>
         /// Insert a path/value pair into the index.
@@ -227,7 +260,12 @@ namespace StreamDb.Internal.DbStructure
             if (nodeIdx >= _nodes.Count) throw new Exception("node index makes no sense");
 
             var newIdx = _entries.Count;
-            _entries.Add(value);
+            var entry = new Entry{
+                Data = value,
+                EntryOrder = newIdx,
+                NodePosition = _nodes.Count
+            };
+            _entries.Add(entry);
 
             _nodes[nodeIdx].DataIdx = newIdx;
         }
@@ -236,7 +274,7 @@ namespace StreamDb.Internal.DbStructure
         {
             if (nodeDataIdx < 0) return default;
             if (nodeDataIdx >= _entries.Count) return default;
-            return _entries[nodeDataIdx];
+            return _entries[nodeDataIdx].Data;
         }
 
         public string DiagnosticString()
@@ -297,48 +335,159 @@ namespace StreamDb.Internal.DbStructure
         public void WriteTo(Stream stream)
         {
             if (stream == null) return;
+            
+            // Plan: keep the nodes and entries together in the serialised form
+            //
+            // Have a temp array 1:1 with the entries array. Each slot holds one of [ no-link | left | right | middle ] and an index.
+            // When we serialise, we don't write the forward links, but fill in the entry for the target.
+            // If the entry we are serialising has something other than 'no-link' in its slot, we write that in the output at that point.
+            // When deserialising, when we come across a back link, we fill in the reverse target to make it a forwards link again.
+            //
+            // We need to output data entries in a stable location, after any data we have already written.
+            // To do this, we keep track of how long the node array was when the node data was set, and where it was in the data list
+            // We then sort by those, and output the data in 'node chronological' order.
+
+            var linkMeta = new BackLink[_nodes.Count];
+            var sortedEntries = _entries.OrderBy(k=>k, new EntrySerialOrder()).ToArray();
+            var dataIndex = 0; // this is our seek through sortedEntries
+
             using (var w = new BinaryWriter(stream, Encoding.UTF8, true))
             {
-                // New plan: (keep the nodes and entries together in the serialised form)
-
-                w.Write(INDEX_MARKER);
+                w.Write(START_MARKER);
                 w.Write(_nodes.Count);
-                foreach (var node in _nodes)
+
+                for (var i = 0; i < _nodes.Count; i++)
                 {
-                    WriteIndexNode(node, w);
-                    if (node.DataIdx > EMPTY_OFFSET) {
-                        WriteDataEntry(_entries[node.DataIdx], w); 
+                    while (dataIndex < sortedEntries.Length && sortedEntries[dataIndex] != null
+                                                            && sortedEntries[dataIndex].NodePosition <= i) {
+                        w.Write(DATA_MARKER);
+                        WriteDataEntry(sortedEntries[dataIndex].Data, w);
+                        dataIndex++;
                     }
+
+                    w.Write(INDEX_MARKER);
+                    var node = _nodes[i];
+
+                    // mark up the backlink meta data
+                    if (node.Left >= 0) {
+                        if (node.Left <= i) throw new Exception("inverse left link");
+                        linkMeta[node.Left] = new BackLink {Type = BackLinkType.Left, Position = i};
+                    }
+                    if (node.Right >= 0) {
+                        if (node.Right <= i) throw new Exception("inverse right link");
+                        linkMeta[node.Right] = new BackLink {Type = BackLinkType.Right, Position = i};
+                    }
+                    if (node.Match >= 0) {
+                        if (node.Match <= i) throw new Exception("inverse match link");
+                        linkMeta[node.Match] = new BackLink {Type = BackLinkType.Match, Position = i};
+                    }
+
+
+                    w.Write(node.Ch);
+                    w.Write(node.DataIdx); // will be -1 if no data. We should be recovering the same entry indexes.
+                    w.Write((byte)linkMeta[i].Type);
+                    w.Write(linkMeta[i].Position); // every node except the root should have a backlink
+
                 }
+                // write out any data nodes that are left
+                while (dataIndex < sortedEntries.Length && sortedEntries[dataIndex] != null)
+                {
+                    w.Write(DATA_MARKER);
+                    WriteDataEntry(sortedEntries[dataIndex].Data, w);
+                    dataIndex++;
+                }
+
+                w.Write(END_MARKER);
             }
         }
+
 
         private static void OverwriteFromStream([NotNull]Stream stream, [NotNull]PathIndex<T> result)
         {
             using (var r = new BinaryReader(stream, Encoding.UTF8, true))
             {
-                // New method -- keep the data nodes next to their index nodes
-                if (r.ReadInt64() != INDEX_MARKER) throw new Exception("Input stream missing index marker");
+                // See `WriteTo()` for a description of this.
+                // The tree is stored with links backwards, to make it an append-only structure
+                // When reading, with flip them back to forwards links for querying
+
+                if (r.ReadByte() != START_MARKER) throw new Exception("Input stream missing start marker");
                 var nodeCount = r.ReadInt32();
                 if (nodeCount < 0) throw new Exception("Input stream node count invalid");
                 
-                for (int i = 0; i < nodeCount; i++)
-                {
-                    var node = ReadIndexNode(r);
-                    result._nodes.Add(node);
-                    if (node.DataIdx > EMPTY_OFFSET) {
-                        node.DataIdx = result._entries.Count;
-                        result._entries.Add(ReadDataEntry(r));
+                // we could get index nodes or data entries in any order
+                while (true) {
+                    var tag = r.ReadByte();
+                    switch (tag) {
+                        case END_MARKER:
+                            return;
+                        case INDEX_MARKER:
+                            {
+                                var node = new Node {
+                                    Ch = r.ReadChar(),
+                                    DataIdx = r.ReadInt32()
+                                };
+                                var backLink = new BackLink{
+                                    Type = (BackLinkType)r.ReadByte(),
+                                    Position = r.ReadInt32()
+                                };
+                                
+                                result._nodes.Add(node);
+                                StitchLink(result, backLink, result._nodes.Count - 1);
+                            }
+                            break;
+                        case DATA_MARKER:
+                            {
+                                var entry = new Entry
+                                {
+                                    Data = ReadDataEntry(r),
+                                    NodePosition = result._nodes.Count,
+                                    EntryOrder = result._entries.Count
+                                };
+                                result._entries.Add(entry);
+                            }
+                            break;
+                        default:
+                            throw new Exception($"PathIndex.OverwriteFromStream: Invalid serialisation structure ({tag})");
                     }
                 }
+            }
+        }
+
+        private static void StitchLink([NotNull]PathIndex<T> result, BackLink backLink, int targetOffset)
+        {
+            if (backLink.Type == BackLinkType.None) return;
+
+            var blp = backLink.Position;
+            if (blp < 0) throw new Exception("PathIndex.StitchLink: back link was negative");
+            if (blp >= result._nodes.Count) throw new Exception($"PathIndex.StitchLink: back link was a forward link. P={blp}; O={targetOffset}; L={result._nodes.Count}.");
+            var node =  result._nodes[blp];
+            if (node == null) throw new Exception("Deserialisation desynchronised");
+            switch (backLink.Type) {
+
+                case BackLinkType.Left:
+                    node.Left = targetOffset;
+                    return;
+                    
+                case BackLinkType.Right:
+                    node.Right = targetOffset;
+                    return;
+
+                case BackLinkType.Match:
+                    node.Match = targetOffset;
+                    return;
+
+                case BackLinkType.None:
+                    return;
+
+                default:
+                    throw new Exception("Non exhaustive switch in PathIndex.StitchLink");
             }
         }
 
         private static T ReadDataEntry([NotNull]BinaryReader r)
         {
             var length = r.ReadInt32();
-            if (length < 0) return default;
-            if (length == 0) return default;
+            if (length <= 0) return default;
 
             var bytes = r.ReadBytes(length);
 
@@ -353,36 +502,6 @@ namespace StreamDb.Internal.DbStructure
             var bytes = data.ToBytes();
             w.Write(bytes.Length);
             w.Write(bytes);
-        }
-
-        [NotNull]private static Node ReadIndexNode([NotNull]BinaryReader r)
-        {
-            var node = new Node {Ch = r.ReadChar()};
-
-
-            var flags = r.ReadByte();
-            if ((flags & HAS_MATCH) > 0) node.Match = r.ReadInt32();
-            if ((flags & HAS_LEFT) > 0) node.Left = r.ReadInt32();
-            if ((flags & HAS_RIGHT) > 0) node.Right = r.ReadInt32();
-            if ((flags & HAS_DATA) > 0) node.DataIdx = 1;// we rebuild this implicitly
-
-            return node;
-        }
-
-        private static void WriteIndexNode([NotNull]Node node, [NotNull]BinaryWriter w)
-        {
-            byte flags = 0;
-            if (node.Match >= 0) flags |= HAS_MATCH;
-            if (node.Left >= 0) flags |= HAS_LEFT;
-            if (node.Right >= 0) flags |= HAS_RIGHT;
-            if (node.DataIdx >= 0) flags |= HAS_DATA;
-
-            w.Write(node.Ch);
-            w.Write(flags);
-
-            if (node.Match >= 0) w.Write(node.Match);
-            if (node.Left >= 0) w.Write(node.Left);
-            if (node.Right >= 0) w.Write(node.Right);
         }
 
         /// <inheritdoc />

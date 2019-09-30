@@ -216,7 +216,7 @@ namespace StreamDb.Tests
             source.Add("my/path/3", "value5");
             source.Add("my/path/4", "value6");
             source.Add("my/third/path", "value7");
-            source.Add("my/other/path/longer-still", "value8");
+            source.Add("my/other/path/longer-still", "PPPPPPPPP"); // F0090000005050505050...
 
             // get extended
             var bytes2 = source.ToBytes();
@@ -234,15 +234,16 @@ namespace StreamDb.Tests
             // If the entry we are serialising has something other than 'no-link' in its slot, we write that in the output at that point.
             // When deserialising, when we come across a back link, we fill in the reverse target to make it a forwards link again.
             
-            Console.WriteLine("### ONE ###");
             Console.WriteLine(bytes1.ToHexString());
-            Console.WriteLine("\r\n### TWO ###");
             Console.WriteLine(bytes2.ToHexString());
 
             // make a new one with only the added bytes
             var bytes3 = new byte[bytes2.Length];
-            for (int i = 0; i < bytes1.Length; i++) { bytes3[i] = bytes1[i]; }
-            for (int i = bytes1.Length; i < bytes2.Length; i++) { bytes3[i] = bytes2[i]; }
+            var crossOver = bytes1.Length - 1; // note, we need to truncate the 'END_MARKER' byte from the shorter one
+            for (int i = 0; i < crossOver; i++) { bytes3[i] = bytes1[i]; }
+            for (int i = crossOver; i < bytes2.Length; i++) { bytes3[i] = bytes2[i]; }
+
+            Console.WriteLine(bytes3.ToHexString()); // should end up the same as bytes2
 
             var result = new PathIndex<ByteString>();
             result.FromBytes(bytes3);
@@ -254,7 +255,7 @@ namespace StreamDb.Tests
             Assert.That((string)result.Get("my/path/3"), Is.EqualTo("value5"));
             Assert.That((string)result.Get("my/path/4"), Is.EqualTo("value6"));
             Assert.That((string)result.Get("my/third/path"), Is.EqualTo("value7"));
-            Assert.That((string)result.Get("my/other/path/longer-still"), Is.EqualTo("value8"));
+            Assert.That((string)result.Get("my/other/path/longer-still"), Is.EqualTo("PPPPPPPPP"));
         }
 
         [Test]
