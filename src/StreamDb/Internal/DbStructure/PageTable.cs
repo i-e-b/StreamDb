@@ -256,7 +256,6 @@ namespace StreamDb.Internal.DbStructure
         }
 
         [NotNull]private Page<FreeListPage> GetFreePageList() {
-            // TODO: avoid re-reading every time
             var root = ReadRoot();
             var page = GetPageView<FreeListPage>(root.GetFreeListPageId());
             if (page == null) throw new Exception("PageTable.ReadRoot: Failed to free list page");
@@ -264,7 +263,6 @@ namespace StreamDb.Internal.DbStructure
         }
         
         [NotNull]private Page<IndexPage> GetIndexPageList() {
-            // TODO: avoid re-reading every time
             var root = ReadRoot();
             var page = GetPageView<IndexPage>(root.GetIndexListId());
             if (page == null) throw new Exception("PageTable.ReadRoot: Failed to free list page");
@@ -499,7 +497,7 @@ namespace StreamDb.Internal.DbStructure
             // build new page chain for data:
             Page page = null;
             var buf = new byte[Page.PageDataCapacity];
-            var bytes = 0;
+            int bytes;
             while ((bytes = docDataStream.Read(buf,0,buf.Length)) > 0) {
                 var next = ChainPage(page, buf, bytes);
 
@@ -591,8 +589,20 @@ namespace StreamDb.Internal.DbStructure
             // then skip to the start, and wrap in a page-reading stream implementation
 
             var pageId = GetPageIdFromDocumentId(docId);
-            if (pageId < 4) return null; // don't read invalid or core pages this way
-            return new PageTableStream(this, GetPageRaw(pageId));
+            if (pageId < 1) return null; // don't read invalid or root page
+            return new PageTableStream(this, GetPageRaw(pageId), false);
+        }
+
+        /// <summary>
+        /// Present a stream to read from a document, recovered by ID.
+        /// Returns null if the document is not found.
+        /// Allows writing, use with caution.
+        /// </summary>
+        [CanBeNull]public Stream ReadWriteDocument(Guid docId)
+        {
+            var pageId = GetPageIdFromDocumentId(docId);
+            if (pageId < 1) return null;
+            return new PageTableStream(this, GetPageRaw(pageId), true);
         }
 
         /// <summary>
@@ -674,10 +684,29 @@ namespace StreamDb.Internal.DbStructure
 
         private void CommitPathIndexCache()
         {
-            // TODO: extend the path index chain with the NEW data in the lookup object.
-            // This current way is pretty messy.
-
             if (_pathIndexCache == null) return;
+
+
+            // New plan:
+            // 1. Serialise the in-memory lookup
+            // 2. Figure out how long the current stored data is
+            // 3. Append only the new data (continue in the last page) -- just like in the unit tests
+
+
+            using (var data = new MemoryStream(_pathIndexCache.ToBytes()))
+            {
+                var doc =  ReadWriteDocument(Page.PathLookupGuid);
+
+                if (doc.Length == data.Length) return; // no changes
+                if (doc.Length > data.Length) throw new Exception("Path lookup structure was truncated"); // Should we write a new chain at this point?
+
+                data.Seek(doc.Length - 1, SeekOrigin.Begin); // seek to just before the 'end' marker of the existing document
+                doc.Seek(-1, SeekOrigin.End); // Trim off 'end' marker.
+                data.CopyTo(doc);
+            }
+
+/*
+            // OLD STUFF:
             using (var data = new MemoryStream(_pathIndexCache.ToBytes()))
             {
                 data.Seek(0, SeekOrigin.Begin);
@@ -708,6 +737,7 @@ namespace StreamDb.Internal.DbStructure
                     DeletePageChain(expired);
                 }
             }
+            */
         }
 
         /// <summary>
@@ -729,7 +759,7 @@ namespace StreamDb.Internal.DbStructure
             var root = ReadRoot();
             var pathBaseId = root.GetPathLookupBase();
             
-            var source = new PageTableStream(this, GetPageRaw(pathBaseId));
+            var source = new PageTableStream(this, GetPageRaw(pathBaseId), false);
 
             _pathIndexCache = PathIndex<SerialGuid>.ReadFrom(source);
 

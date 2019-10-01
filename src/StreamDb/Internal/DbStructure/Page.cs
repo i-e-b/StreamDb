@@ -257,6 +257,12 @@ namespace StreamDb.Internal.DbStructure
             {
                 _data[PAGE_DATA + pageOffset + i] = input[inputOffset + i];
             }
+
+            if (NextPageId < 0) {
+                // adjust length
+                var writeExtent = NextIdForEmptyPage + (pageOffset + length - 1);
+                NextPageId = Math.Max(NextPageId, writeExtent);
+            }
         }
 
         /// <summary>

@@ -11,6 +11,7 @@ namespace StreamDb.Internal.Support
     public class PageTableStream : Stream {
         [NotNull]private readonly PageTable _parent;
         [NotNull]private readonly Page _endPage;
+        private readonly bool _enableWriting;
         private long _requestedOffset;
 
         /// <summary>
@@ -18,11 +19,13 @@ namespace StreamDb.Internal.Support
         /// </summary>
         /// <param name="parent">PageTable to be used for traversal and reading</param>
         /// <param name="endPage">The LAST page of the page chain</param>
-        public PageTableStream([NotNull]PageTable parent, Page endPage)
+        /// <param name="enableWriting">If true, writing to the stream is enabled. This is for internal use only.</param>
+        public PageTableStream(PageTable parent, Page endPage, bool enableWriting)
         {
             _requestedOffset = 0;
-            _parent = parent;
+            _parent = parent ?? throw new Exception("Tried to stream from a disconnected page (PageTable parent is required)");
             _endPage = endPage ?? throw new Exception("Tried to stream from a null page");
+            _enableWriting = enableWriting;
         }
 
         public override void Flush() { }
@@ -80,13 +83,57 @@ namespace StreamDb.Internal.Support
                     _requestedOffset+= offset;
                     return _requestedOffset;
 
-                default: throw new Exception("Seek from end has not been implemented.");
+                case SeekOrigin.End:
+                    _requestedOffset = Length - offset;
+                    return _requestedOffset;
+
+                default: throw new Exception("Non exhaustive switch");
             }
         }
 
         public override void SetLength(long value) { }
+
+        /// <summary>Writes a sequence of bytes to the current stream and advances the current position within this stream by the number of bytes written.</summary>
+        /// <param name="buffer">An array of bytes. This method copies <paramref name="count" /> bytes from <paramref name="buffer" /> to the current stream. </param>
+        /// <param name="offset">The zero-based byte offset in <paramref name="buffer" /> at which to begin copying bytes to the current stream. </param>
+        /// <param name="count">The number of bytes to be written to the current stream. </param>
         public override void Write(byte[] buffer, int offset, int count) { 
-            throw new Exception("Page content streams are read-only");
+            if (!_enableWriting) throw new Exception("Page content streams are read-only");
+
+            if (count <= 0) return;
+            if (buffer == null) return;
+            if (offset + count > buffer.Length) throw new Exception("Requested data exceeds buffer capacity");
+
+            var pageNumber = (int)(_requestedOffset / Page.PageDataCapacity);
+            var chunkOffset = (int)(_requestedOffset % Page.PageDataCapacity);
+
+            if (pageNumber < 0 || pageNumber > _endPage.DocumentSequence) return; // off the ends
+            // we don't support seeking outside the existing range
+
+            var page = _parent.FindPageInChain(_endPage, pageNumber);
+            if (page == null) return; // out of bounds
+
+            var remaining = count;
+            while (remaining > 0)
+            {
+                var chunkEnd = Math.Min(page.PageDataLength, chunkOffset + remaining);
+                var chunkLength = chunkEnd - chunkOffset;
+
+                if (chunkLength > 0)
+                {
+                    page.Write(buffer, offset, chunkOffset, chunkLength);
+
+                    remaining -= chunkLength;
+                    offset += chunkLength;
+                    _requestedOffset += chunkLength;
+                }
+
+                chunkOffset = 0;
+                // step page
+                var next = _parent.WalkPageChain(page);
+                if (next == null) next = _parent.ChainPage(page, null, -1);
+                page = next;
+            }
         }
         /// <inheritdoc />
         public override bool CanRead => true;
