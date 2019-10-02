@@ -123,24 +123,20 @@ namespace StreamDb.Internal.Support
         }
 
         /// <inheritdoc />
-        public void FromBytes(byte[] source)
+        public void FromBytes(Stream source)
         {
             if (source == null || source.Length < ByteSize) throw new Exception("VersionedLink.FromBytes: data was too short.");
-            using (var ms = new MemoryStream(source))
+            var r = new BinaryReader(source);
+            _linkA = new PageLink
             {
-                ms.Seek(0, SeekOrigin.Begin);
-                var r = new BinaryReader(ms);
-                _linkA = new PageLink
-                {
-                    Version = new MonotonicByte(r.ReadByte()),
-                    PageId = r.ReadInt32()
-                };
-                _linkB = new PageLink
-                {
-                    Version = new MonotonicByte(r.ReadByte()),
-                    PageId = r.ReadInt32()
-                };
-            }
+                Version = new MonotonicByte(r.ReadByte()),
+                PageId = r.ReadInt32()
+            };
+            _linkB = new PageLink
+            {
+                Version = new MonotonicByte(r.ReadByte()),
+                PageId = r.ReadInt32()
+            };
         }
     }
 }

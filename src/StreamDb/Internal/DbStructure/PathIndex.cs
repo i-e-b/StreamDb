@@ -510,10 +510,9 @@ namespace StreamDb.Internal.DbStructure
             var length = r.ReadInt32();
             if (length <= 0) return default;
 
-            var bytes = r.ReadBytes(length);
-
             var value = new T();
-            value.FromBytes(bytes);
+
+            value.FromBytes(new Substream(r.BaseStream, length));
             return value;
         }
 
@@ -536,13 +535,10 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public void FromBytes(byte[] source)
+        public void FromBytes(Stream source)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
-            using (var ms = new MemoryStream(source)) {
-                ms.Seek(0, SeekOrigin.Begin);
-                OverwriteFromStream(ms, this);
-            }
+            OverwriteFromStream(source, this);
         }
     }
 }

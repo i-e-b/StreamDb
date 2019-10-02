@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using NUnit.Framework;
 using StreamDb.Internal.DbStructure;
 
@@ -117,7 +118,7 @@ namespace StreamDb.Tests
 
             var bytes = original.ToBytes();
             var result = new FreeListPage();
-            result.FromBytes(bytes);
+            result.FromBytes(new MemoryStream(bytes));
 
             for (i = 0; i < 100; i++)
             {

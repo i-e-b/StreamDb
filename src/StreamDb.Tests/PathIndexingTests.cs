@@ -130,7 +130,7 @@ namespace StreamDb.Tests
             Console.WriteLine(bytes.ToHexString());
 
             var result = new PathIndex<ByteString>();
-            result.FromBytes(bytes);
+            result.FromBytes(new MemoryStream(bytes));
 
 
             Assert.That((string)result.Get("my/path/1"), Is.EqualTo("value1"));
@@ -239,7 +239,7 @@ namespace StreamDb.Tests
             Console.WriteLine(bytes3.ToHexString()); // should end up the same as bytes2
 
             var result = new PathIndex<ByteString>();
-            result.FromBytes(bytes3);
+            result.FromBytes(new MemoryStream(bytes3));
 
             Assert.That((string)result.Get("my/path/1"), Is.EqualTo("value1"));
             Assert.That((string)result.Get("my/path/2"), Is.EqualTo("value2"));

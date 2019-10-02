@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using NUnit.Framework;
 using StreamDb.Internal;
 using StreamDb.Internal.Support;
@@ -45,7 +46,7 @@ namespace StreamDb.Tests
             var source = new MonotonicByte(140);
             var bytes = source.ToBytes();
             var dest = new MonotonicByte();
-            dest.FromBytes(bytes);
+            dest.FromBytes(new MemoryStream(bytes));
 
             Assert.That(source == dest, Is.True);
         }

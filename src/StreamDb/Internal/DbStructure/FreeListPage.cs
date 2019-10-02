@@ -88,18 +88,13 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public void FromBytes(byte[] source)
+        public void FromBytes(Stream source)
         {
             if (source == null) return;
-            using (var ms = new MemoryStream(source))
+            var r = new BinaryReader(source);
+            for (int i = 0; i < _entries.Length; i++)
             {
-                ms.Seek(0, SeekOrigin.Begin);
-
-                var r = new BinaryReader(ms);
-                for (int i = 0; i < _entries.Length; i++)
-                {
-                    _entries[i] = r.ReadInt32();
-                }
+                _entries[i] = r.ReadInt32();
             }
         }
     }

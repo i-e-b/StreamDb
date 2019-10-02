@@ -24,20 +24,16 @@ namespace StreamDb.Internal.DbStructure
 
 
         /// <inheritdoc />
-        public void FromBytes(byte[] source)
+        public void FromBytes(Stream source)
         {
             if (source == null) throw new Exception("IndexPage.FromBytes: data was too short.");
-            using (var ms = new MemoryStream(source))
-            {
-                ms.Seek(0, SeekOrigin.Begin);
-                var r = new BinaryReader(ms);
+            var r = new BinaryReader(source);
 
-                FreeListLink.FromBytes(r.ReadBytes(VersionedLink.ByteSize));
-                IndexLink.FromBytes(r.ReadBytes(VersionedLink.ByteSize));
-                PathLookupLink.FromBytes(r.ReadBytes(VersionedLink.ByteSize));
-            }
+            FreeListLink.FromBytes(r.BaseStream);
+            IndexLink.FromBytes(r.BaseStream);
+            PathLookupLink.FromBytes(r.BaseStream);
         }
-        
+
         /// <inheritdoc />
         public byte[] ToBytes()
         {

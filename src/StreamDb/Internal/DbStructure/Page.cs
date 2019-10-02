@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using JetBrains.Annotations;
 using StreamDb.Internal.Support;
 
@@ -20,7 +21,7 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         /// <param name="pageId">pageID that has been loaded</param>
         /// <param name="bytes">page data</param>
-        public Page(int pageId, byte[] bytes)
+        public Page(int pageId, Stream bytes)
         {
             FromBytes(bytes);
 
@@ -29,7 +30,7 @@ namespace StreamDb.Internal.DbStructure
             OriginalPageId = pageId;
 
             var v = new T();
-            v.FromBytes(GetData());
+            v.FromBytes(GetDataStream());
             View = v;
         }
 
@@ -38,7 +39,7 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         [NotNull]public static Page<T> FromRaw(Page rawPage) {
             if (rawPage == null) throw new ArgumentNullException(nameof(rawPage));
-            return new Page<T>(rawPage.OriginalPageId, rawPage._data);
+            return new Page<T>(rawPage.OriginalPageId, new MemoryStream(rawPage._data));
         }
 
         /// <summary>
@@ -215,11 +216,11 @@ namespace StreamDb.Internal.DbStructure
         public byte[] ToBytes() { return _data; }
 
         /// <inheritdoc />
-        public void FromBytes(byte[] source)
+        public void FromBytes(Stream source)
         {
             if (source == null) throw new Exception("Page source was null");
-            if (source.Length != PageRawSize) throw new Exception("Page source was not the correct size");
-            for (int i = 0; i < PageRawSize; i++) { _data[i] = source[i]; } // copy across
+            if (source.Length != PageRawSize) throw new Exception($"Page source was not the correct size. Expected {PageRawSize}, got {source.Length}");
+            source.Read(_data, 0, PageRawSize);
         }
 
         public void UpdateCRC()
@@ -282,6 +283,16 @@ namespace StreamDb.Internal.DbStructure
             {
                 buffer[i + bufferOffset] = _data[PAGE_DATA + pageOffset + i];
             }
+        }
+
+        /// <summary>
+        /// Get a stream over the page data.
+        /// This may be offset to start at the contents, so be careful with seeking
+        /// </summary>
+        [NotNull]public Stream GetDataStream() {
+            var ms = new MemoryStream(_data);
+            ms.Seek(PAGE_DATA, SeekOrigin.Begin);
+            return ms;
         }
 
         [NotNull]public byte[] GetData()

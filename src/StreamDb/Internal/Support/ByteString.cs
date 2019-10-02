@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.IO;
+using System.Text;
 
 namespace StreamDb.Internal.Support
 {
@@ -14,9 +15,11 @@ namespace StreamDb.Internal.Support
         }
 
         /// <inheritdoc />
-        public void FromBytes(byte[] source) {
+        public void FromBytes(Stream source) {
             if (source == null) return;
-            _str = Encoding.UTF8?.GetString(source);
+            var bytes = new byte[source.RemainingLength()];
+            source.Read(bytes, 0, source.RemainingLength());
+            _str = Encoding.UTF8?.GetString(bytes);
         }
 
         public static implicit operator ByteString(string other){ return Wrap(other); }

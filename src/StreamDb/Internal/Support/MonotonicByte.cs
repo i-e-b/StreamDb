@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using JetBrains.Annotations;
 
 namespace StreamDb.Internal.Support
@@ -27,7 +28,10 @@ namespace StreamDb.Internal.Support
         public byte[] ToBytes() { return new[] { _value }; }
 
         /// <inheritdoc />
-        public void FromBytes(byte[] source) { if (source == null || source.Length < 1) throw new Exception("Invalid source"); _value = source[0]; }
+        public void FromBytes(Stream source) {
+            if (source == null || source.Length < 1) throw new Exception("Invalid source");
+            _value = (byte)source.ReadByte();
+        }
 
         public override int CompareTo(object obj)
         {

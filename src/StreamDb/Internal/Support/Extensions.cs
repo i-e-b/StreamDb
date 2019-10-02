@@ -3,7 +3,7 @@ using System.Text;
 
 namespace StreamDb.Internal.Support
 {
-    public static class DataDiagnosis
+    public static class Extensions
     {
 
         public static string ToHexString(this Stream s)
@@ -26,6 +26,11 @@ namespace StreamDb.Internal.Support
                 sb.Append(b[i].ToString("x2"));
             }
             return sb.ToString();
+        }
+
+        public static int RemainingLength(this Stream s) {
+            if (s == null) return 0;
+            return (int)(s.Length - s.Position);
         }
     }
 }

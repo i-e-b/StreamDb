@@ -211,8 +211,7 @@ namespace StreamDb.Internal.DbStructure
                 if (reader.BaseStream.Length < byteEnd) return null;
 
                 reader.BaseStream.Seek(byteOffset, SeekOrigin.Begin);
-                var bytes = reader.ReadBytes(Page.PageRawSize);
-                return new Page<T>(pageId, bytes);
+                return new Page<T>(pageId, new Substream(reader.BaseStream, Page.PageRawSize));
             } finally {
                 _storage.Release(ref reader);
             }
@@ -230,10 +229,9 @@ namespace StreamDb.Internal.DbStructure
                 if (reader.BaseStream.Length < byteEnd) throw new Exception($"Database stream is truncated at page {pageId}");
 
                 reader.BaseStream.Seek(byteOffset, SeekOrigin.Begin);
-                var bytes = reader.ReadBytes(Page.PageRawSize);
                 
                 var result = new Page();
-                result.FromBytes(bytes);
+                result.FromBytes(new Substream(reader.BaseStream, Page.PageRawSize));
                 result.OriginalPageId = pageId;
                 if (!result.ValidateCrc()) throw new Exception($"CRC failed at page {pageId}");
                 return result;
@@ -250,7 +248,7 @@ namespace StreamDb.Internal.DbStructure
             if (!page.ValidateCrc()) throw new Exception("PageTable.ReadRoot: Root entry failed CRC check. Must recover database.");
 
             var final = new RootPage();
-            final.FromBytes(page.GetData());
+            final.FromBytes(page.GetDataStream());
             _rootPageCache = final;
             return final;
         }

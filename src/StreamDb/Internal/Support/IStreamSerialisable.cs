@@ -1,4 +1,5 @@
-﻿using JetBrains.Annotations;
+﻿using System.IO;
+using JetBrains.Annotations;
 
 namespace StreamDb.Internal.Support
 {
@@ -15,6 +16,6 @@ namespace StreamDb.Internal.Support
         /// <summary>
         /// Populate from a byte array
         /// </summary>
-        void FromBytes(byte[] source);
+        void FromBytes(Stream source);
     }
 }

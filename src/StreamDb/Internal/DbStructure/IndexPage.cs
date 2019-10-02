@@ -157,26 +157,22 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public void FromBytes(byte[] source)
+        public void FromBytes(Stream source)
         {
             if (source == null || source.Length < PackedSize) throw new Exception("IndexPage.FromBytes: data was too short.");
-            using (var ms = new MemoryStream(source))
+            var r = new BinaryReader(source);
+
+            for (int i = 0; i < EntryCount; i++)
             {
-                ms.Seek(0, SeekOrigin.Begin);
-                var r = new BinaryReader(ms);
+                var bytes = r.ReadBytes(16);
+                if (bytes == null) throw new Exception("Failed to read doc guid");
+                _docIds[i] = new Guid(bytes);
 
-                for (int i = 0; i < EntryCount; i++)
-                {
-                    var bytes = r.ReadBytes(16);
-                    if (bytes == null) throw new Exception("Failed to read doc guid");
-                    _docIds[i] = new Guid(bytes);
 
-                    
-                    _links[i].FromBytes(r.ReadBytes(VersionedLink.ByteSize));
-                }
+                _links[i].FromBytes(r.BaseStream);
             }
         }
-        
+
         /// <inheritdoc />
         public byte[] ToBytes()
         {
