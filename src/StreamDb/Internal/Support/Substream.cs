@@ -32,7 +32,7 @@ namespace StreamDb.Internal.Support
         }
 
         /// <inheritdoc />
-        public override void Flush() { }
+        public override void Flush() { _parent.Flush(); }
 
         /// <inheritdoc />
         public override int Read(byte[] buffer, int offset, int count)
@@ -78,7 +78,7 @@ namespace StreamDb.Internal.Support
         public override bool CanRead => true;
 
         /// <inheritdoc />
-        public override bool CanSeek => false;
+        public override bool CanSeek => true;
 
         /// <inheritdoc />
         public override bool CanWrite => false;

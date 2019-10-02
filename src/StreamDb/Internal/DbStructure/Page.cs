@@ -213,7 +213,7 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public byte[] ToBytes() { return _data; }
+        public Stream ToBytes() { return new MemoryStream(_data); }
 
         /// <inheritdoc />
         public void FromBytes(Stream source)
@@ -262,6 +262,28 @@ namespace StreamDb.Internal.DbStructure
             if (NextPageId < 0) {
                 // adjust length
                 var writeExtent = NextIdForEmptyPage + (pageOffset + length);
+                NextPageId = Math.Max(NextPageId, writeExtent);
+            }
+        }
+        
+        /// <summary>
+        /// Copy data from a buffer into the data section of the page
+        /// </summary>
+        /// <param name="input">Input data</param>
+        /// <param name="inputOffset">offset into the input data to start</param>
+        /// <param name="pageOffset">offset into the page data</param>
+        /// <param name="length">number of bytes to copy</param>
+        public void Write(Stream input, int inputOffset, int pageOffset, long length)
+        {
+            if (input == null) return;
+            if (inputOffset + length > input.Length) throw new Exception("Page Write exceeds input size");
+            if (pageOffset + length > PageDataCapacity) throw new Exception("Page Write exceeds page size");
+
+            input.Read(_data, PAGE_DATA+pageOffset, (int)length);
+
+            if (NextPageId < 0) {
+                // adjust length
+                int writeExtent = (int)(NextIdForEmptyPage + (pageOffset + length));
                 NextPageId = Math.Max(NextPageId, writeExtent);
             }
         }

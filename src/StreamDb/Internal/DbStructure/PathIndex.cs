@@ -361,6 +361,7 @@ namespace StreamDb.Internal.DbStructure
                 {
                     while (dataIndex < sortedEntries.Length && sortedEntries[dataIndex] != null
                                                             && sortedEntries[dataIndex].NodePosition <= i) {
+                        
                         w.Write(DATA_MARKER);
                         WriteDataEntry(sortedEntries[dataIndex].Data, w);
                         dataIndex++;
@@ -412,12 +413,13 @@ namespace StreamDb.Internal.DbStructure
                 // The tree is stored with links backwards, to make it an append-only structure
                 // When reading, with flip them back to forwards links for querying
 
-                if (r.ReadByte() != START_MARKER) throw new Exception("Input stream missing start marker");
+                var marker = stream.ReadByte();
+                if (marker != START_MARKER) throw new Exception($"Input stream missing start marker. Expected {START_MARKER:X}, but got {marker:X}");
                 
                 // we could get index nodes or data entries in any order
                 while (true)
                 {
-                    var tag = TryReadTag(r);
+                    var tag = TryReadTag(stream);
                     switch (tag) {
                         case END_MARKER:
                             // Thought: maybe allow multiple of these, so we can recover bad concatenation?
@@ -456,19 +458,20 @@ namespace StreamDb.Internal.DbStructure
                             }
                             break;
                         default:
-                            throw new Exception($"PathIndex.OverwriteFromStream: Invalid serialisation structure ({tag:X})");
+                            throw new Exception($"PathIndex.OverwriteFromStream: Invalid serialisation structure ({tag:X}) at position {stream.Position} of {stream.Length}");
                     }
                 }
             }
         }
 
-        private static byte TryReadTag([NotNull]BinaryReader r)
+        private static byte TryReadTag([NotNull]Stream r)
         {
-            if (r.BaseStream == null) return STREAM_ENDED;
-            if (r.BaseStream.Position == r.BaseStream.Length) return STREAM_ENDED;
+            if (r.Position == r.Length) return STREAM_ENDED;
 
             try {
-                return r.ReadByte();
+                var v = r.ReadByte();
+                if (v < 0) return STREAM_ENDED;
+                return (byte)v;
             } catch {
                 return STREAM_ENDED;
             }
@@ -509,9 +512,8 @@ namespace StreamDb.Internal.DbStructure
         {
             var length = r.ReadInt32();
             if (length <= 0) return default;
-
+            
             var value = new T();
-
             value.FromBytes(new Substream(r.BaseStream, length));
             return value;
         }
@@ -519,19 +521,19 @@ namespace StreamDb.Internal.DbStructure
         private void WriteDataEntry(T data, [NotNull]BinaryWriter w)
         {
             if (data == null) { w.Write(EMPTY_OFFSET); return; }
+
             var bytes = data.ToBytes();
-            w.Write(bytes.Length);
-            w.Write(bytes);
+            w.Write((int)bytes.Length);
+            bytes.CopyTo(w.BaseStream);
         }
 
         /// <inheritdoc />
-        public byte[] ToBytes()
+        public Stream ToBytes()
         {
-            using (var ms = new MemoryStream()) {
-                WriteTo(ms);
-                ms.Seek(0, SeekOrigin.Begin);
-                return ms.ToArray() ?? throw new Exception();
-            }
+            var ms = new MemoryStream();
+            WriteTo(ms);
+            ms.Seek(0, SeekOrigin.Begin);
+            return ms;
         }
 
         /// <inheritdoc />

@@ -111,10 +111,11 @@ namespace StreamDb.Internal.DbStructure
             var w = _storage.AcquireWriter();
             try {
                 w.Seek(0, SeekOrigin.Begin);
-                w.Write(root.ToBytes());
-                w.Write(index.ToBytes());
-                w.Write(free.ToBytes());
-                w.Write(path.ToBytes());
+
+                root.ToBytes().CopyTo(w.BaseStream);
+                index.ToBytes().CopyTo(w.BaseStream);
+                free.ToBytes().CopyTo(w.BaseStream);
+                path.ToBytes().CopyTo(w.BaseStream);
             }
             finally 
             {
@@ -136,6 +137,7 @@ namespace StreamDb.Internal.DbStructure
                 FirstPageId = 3
             };
             var bytes = path0.ToBytes();
+            
             page.Write(bytes, 0, 0, bytes.Length);
             page.UpdateCRC();
             return page;
@@ -393,10 +395,10 @@ namespace StreamDb.Internal.DbStructure
         /// <param name="other">End of a page chain.</param>
         /// <param name="optionalContent">Data bytes to insert, if any</param>
         /// <param name="contentLength">Length of data to use. To use entire buffer, you can pass -1</param>
-        [NotNull]public Page ChainPage([CanBeNull] Page other, [CanBeNull] byte[] optionalContent, int contentLength) {
+        [NotNull]public Page ChainPage([CanBeNull] Page other, [CanBeNull]Stream optionalContent, int contentLength) {
             if (optionalContent == null) contentLength = 0;
             else if (contentLength > optionalContent.Length) throw new Exception("Page content length requested is outside of buffer provided");
-            else if (contentLength < 0) contentLength = optionalContent.Length; // allow `-1` for whole buffer
+            else if (contentLength < 0) contentLength = (int)optionalContent.Length; // allow `-1` for whole buffer
 
             var nextPageValue = Page.NextIdForEmptyPage + contentLength;
 
@@ -478,8 +480,7 @@ namespace StreamDb.Internal.DbStructure
         private void CommitPage([NotNull]Page page, [NotNull]BinaryWriter w)
         {
             w.Seek(page.OriginalPageId * Page.PageRawSize, SeekOrigin.Begin);
-            var buf = page.ToBytes();
-            w.Write(buf);
+            page.ToBytes().CopyTo(w.BaseStream);
             page.Dirty = false;
         }
 
@@ -496,8 +497,8 @@ namespace StreamDb.Internal.DbStructure
             Page page = null;
             var buf = new byte[Page.PageDataCapacity];
             int bytes;
-            while ((bytes = docDataStream.Read(buf,0,buf.Length)) > 0) {
-                var next = ChainPage(page, buf, bytes);
+            while ((bytes = docDataStream.Read(buf,0,buf.Length)) > 0) { // TODO: optimise this now we've switched to streams
+                var next = ChainPage(page, new MemoryStream(buf), bytes);
 
                 if (next.PageType == PageType.Invalid) { // first page
                     next.PageType = PageType.Data;
@@ -678,7 +679,7 @@ namespace StreamDb.Internal.DbStructure
             // 2. Figure out how long the current stored data is
             // 3. Append only the new data (continue in the last page)
 
-            using (var newPathData = new MemoryStream(_pathIndexCache.ToBytes()))
+            using (var newPathData = _pathIndexCache.ToBytes())
             {
                 var raw = GetPageRaw(ReadRoot().GetPathLookupBase());
                 if (raw == null) throw new Exception("Path lookup pages lost");
@@ -698,7 +699,7 @@ namespace StreamDb.Internal.DbStructure
         /// Write the root cache back to storage.
         /// This should be done as soon as possible if the root page is changed.
         /// </summary>
-        private void CommitRootCache()
+        public void CommitRootCache()
         {
             if (_rootPageCache == null) return;
 

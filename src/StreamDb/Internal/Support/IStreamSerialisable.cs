@@ -11,7 +11,7 @@ namespace StreamDb.Internal.Support
         /// <summary>
         /// Convert this instance to a byte array
         /// </summary>
-        [NotNull]byte[] ToBytes();
+        [NotNull]Stream ToBytes();
 
         /// <summary>
         /// Populate from a byte array

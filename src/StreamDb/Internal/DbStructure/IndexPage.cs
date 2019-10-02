@@ -174,21 +174,19 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public byte[] ToBytes()
+        public Stream ToBytes()
         {
-            using (var ms = new MemoryStream(PackedSize))
+            var ms = new MemoryStream(PackedSize);
+            var w = new BinaryWriter(ms);
+
+            for (int i = 0; i < EntryCount; i++)
             {
-                var w = new BinaryWriter(ms);
-
-                for (int i = 0; i < EntryCount; i++)
-                {
-                    w.Write(_docIds[i].ToByteArray());
-                    w.Write(_links[i].ToBytes());
-                }
-
-                ms.Seek(0, SeekOrigin.Begin);
-                return ms.ToArray() ?? throw new Exception();
+                w.Write(_docIds[i].ToByteArray());
+                _links[i].ToBytes().CopyTo(ms);
             }
+
+            ms.Seek(0, SeekOrigin.Begin);
+            return ms;
         }
     }
 }

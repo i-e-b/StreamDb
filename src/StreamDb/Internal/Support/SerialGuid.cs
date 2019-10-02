@@ -9,7 +9,7 @@ namespace StreamDb.Internal.Support
         
         public static implicit operator SerialGuid(Guid other){ return Wrap(other); }
         public static explicit operator Guid(SerialGuid other){ return other?.Value ?? Guid.Empty; }
-        public byte[] ToBytes() { return Value.ToByteArray(); }
+        public Stream ToBytes() { return new MemoryStream(Value.ToByteArray()); }
         public void FromBytes(Stream source)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));

@@ -35,19 +35,16 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public byte[] ToBytes()
+        public Stream ToBytes()
         {
-            using (var ms = new MemoryStream())
-            {
-                var w = new BinaryWriter(ms);
+            var ms = new MemoryStream();
 
-                w.Write(FreeListLink.ToBytes());
-                w.Write(IndexLink.ToBytes());
-                w.Write(PathLookupLink.ToBytes());
+            FreeListLink.ToBytes().CopyTo(ms);
+            IndexLink.ToBytes().CopyTo(ms);
+            PathLookupLink.ToBytes().CopyTo(ms);
 
-                ms.Seek(0, SeekOrigin.Begin);
-                return ms.ToArray() ?? throw new Exception();
-            }
+            ms.Seek(0, SeekOrigin.Begin);
+            return ms;
         }
 
         /// <summary>

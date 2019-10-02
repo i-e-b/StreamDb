@@ -25,7 +25,9 @@ namespace StreamDb.Internal.Support
         }
 
         /// <inheritdoc />
-        public byte[] ToBytes() { return new[] { _value }; }
+        public Stream ToBytes() {
+            return new MemoryStream(new[] { _value });
+        }
 
         /// <inheritdoc />
         public void FromBytes(Stream source) {

@@ -9,9 +9,9 @@ namespace StreamDb.Internal.Support
         public static ByteString Wrap(string str) { return new ByteString{_str = str }; }
 
         /// <inheritdoc />
-        public byte[] ToBytes() {
-            if (_str == null) return new byte[0];
-            return Encoding.UTF8?.GetBytes(_str) ?? new byte[0];
+        public Stream ToBytes() {
+            if (_str == null) return new MemoryStream(0);
+            return new MemoryStream(Encoding.UTF8?.GetBytes(_str));
         }
 
         /// <inheritdoc />

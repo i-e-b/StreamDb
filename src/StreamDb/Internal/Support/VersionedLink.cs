@@ -109,17 +109,15 @@ namespace StreamDb.Internal.Support
         }
 
         /// <inheritdoc />
-        public byte[] ToBytes()
+        public Stream ToBytes()
         {
-            using (var ms = new MemoryStream(ByteSize))
-            {
-                var w = new BinaryWriter(ms);
-                WriteLink(w, _linkA);
-                WriteLink(w, _linkB);
-                
-                ms.Seek(0, SeekOrigin.Begin);
-                return ms.ToArray() ?? throw new Exception();
-            }
+            var ms = new MemoryStream(ByteSize);
+            var w = new BinaryWriter(ms);
+            WriteLink(w, _linkA);
+            WriteLink(w, _linkB);
+
+            ms.Seek(0, SeekOrigin.Begin);
+            return ms;
         }
 
         /// <inheritdoc />

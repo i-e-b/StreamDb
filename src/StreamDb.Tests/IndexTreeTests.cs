@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.IO;
 using NUnit.Framework;
 using StreamDb.Internal.DbStructure;
 
@@ -137,7 +136,7 @@ namespace StreamDb.Tests
             var bytes = original.ToBytes();
 
             var result = new IndexPage();
-            result.FromBytes(new MemoryStream(bytes));
+            result.FromBytes(bytes);
 
             var found = result.Search(key, out var link);
             Assert.That(found, Is.True, "Failed to find target");

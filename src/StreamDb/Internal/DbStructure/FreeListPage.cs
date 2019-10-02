@@ -1,5 +1,4 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using JetBrains.Annotations;
 using StreamDb.Internal.Support;
 
@@ -73,18 +72,16 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public byte[] ToBytes()
+        public Stream ToBytes()
         {
-            using (var ms = new MemoryStream(Capacity * sizeof(int)))
+            var ms = new MemoryStream(Capacity * sizeof(int));
+            var w = new BinaryWriter(ms);
+            for (int i = 0; i < _entries.Length; i++)
             {
-                var w = new BinaryWriter(ms);
-                for (int i = 0; i < _entries.Length; i++)
-                {
-                    w.Write(_entries[i]);
-                }
-                ms.Seek(0, SeekOrigin.Begin);
-                return ms.ToArray() ?? throw new InvalidOperationException();
+                w.Write(_entries[i]);
             }
+            ms.Seek(0, SeekOrigin.Begin);
+            return ms;
         }
 
         /// <inheritdoc />

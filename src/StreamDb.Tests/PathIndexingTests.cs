@@ -127,10 +127,13 @@ namespace StreamDb.Tests
         
             var bytes = source.ToBytes();
 
+            bytes.Seek(0, SeekOrigin.Begin);
+
             Console.WriteLine(bytes.ToHexString());
 
             var result = new PathIndex<ByteString>();
-            result.FromBytes(new MemoryStream(bytes));
+            bytes.Seek(0, SeekOrigin.Begin);
+            result.FromBytes(bytes);
 
 
             Assert.That((string)result.Get("my/path/1"), Is.EqualTo("value1"));
@@ -212,6 +215,7 @@ namespace StreamDb.Tests
 
             // get originals
             var bytes1 = source.ToBytes();
+            Console.WriteLine($"First len = {bytes1.Length}");
 
             source.Add("my/path/3", "value5");
             source.Add("my/path/4", "value6");
@@ -220,26 +224,32 @@ namespace StreamDb.Tests
 
             // get extended
             var bytes2 = source.ToBytes();
+            Console.WriteLine($"Second len = {bytes2.Length}");
             Assert.That(bytes2.Length, Is.GreaterThan(bytes1.Length), "Adding entries did not change the serialised size");
-            
+
             // illustrate data
-            Console.WriteLine(bytes1.ToHexString());
-            Console.WriteLine(bytes2.ToHexString());
+            //Console.WriteLine(bytes1.ToHexString());
+            //Console.WriteLine(bytes2.ToHexString());
 
             // make a new one with only the added bytes
-            byte[] bytes3;
 
-            using (var tmp = new MemoryStream()){
-                tmp.Write(bytes1, 0, bytes1.Length);
-                tmp.Write(bytes2, bytes1.Length - 1, (bytes2.Length - bytes1.Length) + 1);
-                tmp.Seek(0, SeekOrigin.Begin);
-                bytes3 = tmp.ToArray();
-            }
+            var concat = new MemoryStream();
+            bytes1.Seek(0, SeekOrigin.Begin);
+            bytes1.CopyTo(concat);
+            Console.WriteLine("part 1 = " + concat.Position);
 
-            Console.WriteLine(bytes3.ToHexString()); // should end up the same as bytes2
+            bytes2.Seek(bytes1.Length - 1, SeekOrigin.Begin);
+            bytes2.CopyTo(concat);
+            Console.WriteLine("part 2 = " + concat.Position);
+            concat.Seek(0, SeekOrigin.Begin);
+
+
+            Console.WriteLine($"Expected {bytes2.Length + 1}, got {concat.Length}");
 
             var result = new PathIndex<ByteString>();
-            result.FromBytes(new MemoryStream(bytes3));
+            result.FromBytes(concat);
+
+            // TODO: errors here are probably bugs in `Substream`
 
             Assert.That((string)result.Get("my/path/1"), Is.EqualTo("value1"));
             Assert.That((string)result.Get("my/path/2"), Is.EqualTo("value2"));
