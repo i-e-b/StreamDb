@@ -8,7 +8,7 @@ namespace StreamDb.Internal.DbStructure
     /// <summary>
     /// Content of a single index page
     /// </summary>
-    public class IndexPage : IByteSerialisable
+    public class IndexPage : IStreamSerialisable
     {
 
         const int EntryCount = 126; // 2+4+8+16+32+64

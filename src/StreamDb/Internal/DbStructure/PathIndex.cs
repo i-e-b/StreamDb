@@ -16,7 +16,7 @@ namespace StreamDb.Internal.DbStructure
     /// The result of path index is stored as a special document in the database, and used
     /// to look up files by path.
     /// </remarks>
-    public class PathIndex<T>: IByteSerialisable where T : IByteSerialisable, new()
+    public class PathIndex<T>: IStreamSerialisable where T : IStreamSerialisable, new()
     {
         // Serialisation tags:
         const byte START_MARKER = 0xFF;

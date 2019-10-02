@@ -5,7 +5,7 @@ namespace StreamDb.Internal.Support
     /// <summary>
     /// Interface for classes that can serialise to/from bytes
     /// </summary>
-    public interface IByteSerialisable
+    public interface IStreamSerialisable
     {
         /// <summary>
         /// Convert this instance to a byte array

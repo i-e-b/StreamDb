@@ -198,7 +198,7 @@ namespace StreamDb.Internal.DbStructure
         /// <summary>
         /// Read a specific existing page by Page ID. Returns null if the page does not exist.
         /// </summary>
-        [CanBeNull]public Page<T> GetPageView<T>(int pageId) where T : IByteSerialisable, new()
+        [CanBeNull]public Page<T> GetPageView<T>(int pageId) where T : IStreamSerialisable, new()
         {
             var reader = _storage.AcquireReader();
             try {
@@ -450,7 +450,7 @@ namespace StreamDb.Internal.DbStructure
         /// Write a page into the storage stream. The PageID *MUST* be correct.
         /// This method is very thread sensitive
         /// </summary>
-        public void CommitPage<T>(Page<T> page) where T : IByteSerialisable, new()
+        public void CommitPage<T>(Page<T> page) where T : IStreamSerialisable, new()
         {
             page?.SyncView();
             CommitPage((Page)page);

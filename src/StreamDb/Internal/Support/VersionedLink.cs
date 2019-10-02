@@ -7,7 +7,7 @@ namespace StreamDb.Internal.Support
     /// <summary>
     /// A pair of versioned page links, and calls to read and update them
     /// </summary>
-    public class VersionedLink : IByteSerialisable {
+    public class VersionedLink : IStreamSerialisable {
         [NotNull] private PageLink _linkA;
         [NotNull] private PageLink _linkB;
 

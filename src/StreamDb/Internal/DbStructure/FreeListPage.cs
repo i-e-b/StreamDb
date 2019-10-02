@@ -26,7 +26,7 @@ namespace StreamDb.Internal.DbStructure
     /// The free list provides no protection from double-free. The caller should check the returned page
     /// is not in use (with page type and document id).
     /// </remarks>
-    public class FreeListPage: IByteSerialisable
+    public class FreeListPage: IStreamSerialisable
     {
         [NotNull]private readonly int[] _entries;
         public const int Capacity = Page.PageDataCapacity / sizeof(int);

@@ -2,7 +2,7 @@
 
 namespace StreamDb.Internal.Support
 {
-    public class ByteString : IByteSerialisable {
+    public class ByteString : IStreamSerialisable {
         private string _str;
 
         public static ByteString Wrap(string str) { return new ByteString{_str = str }; }

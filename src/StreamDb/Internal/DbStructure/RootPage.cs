@@ -9,7 +9,7 @@ namespace StreamDb.Internal.DbStructure
     /// Data structure for the root page. This is a versioned list of the starting points for the index/free tables.
     /// This page should be updated very rarely.
     /// </summary>
-    public class RootPage:IByteSerialisable
+    public class RootPage:IStreamSerialisable
     {
         [NotNull]public readonly VersionedLink IndexLink;
         [NotNull]public readonly VersionedLink FreeListLink;

@@ -2,7 +2,7 @@
 
 namespace StreamDb.Internal.Support
 {
-    public class SerialGuid : IByteSerialisable {
+    public class SerialGuid : IStreamSerialisable {
         public Guid Value;
         public static SerialGuid Wrap(Guid g) { return new SerialGuid { Value = g }; }
         

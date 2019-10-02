@@ -8,7 +8,7 @@ namespace StreamDb.Internal.DbStructure
     /// <summary>
     /// Represents a generalised page in the DB with known contents
     /// </summary>
-    public class Page<T> : Page where T : IByteSerialisable, new()
+    public class Page<T> : Page where T : IStreamSerialisable, new()
     {
         /// <summary>
         /// Snapshot of the page content when it was loaded
@@ -56,7 +56,7 @@ namespace StreamDb.Internal.DbStructure
     /// Represents a generalised page in the DB.
     /// At the moment these are fixed to 4kb for data + headers
     /// </summary>
-    public class Page : IByteSerialisable {
+    public class Page : IStreamSerialisable {
 
         /// <summary>
         /// Size of a page in storage, including all headers and data

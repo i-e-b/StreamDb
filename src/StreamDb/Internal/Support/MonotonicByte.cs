@@ -3,7 +3,7 @@ using JetBrains.Annotations;
 
 namespace StreamDb.Internal.Support
 {
-    public class MonotonicByte : PartiallyOrdered, IByteSerialisable {
+    public class MonotonicByte : PartiallyOrdered, IStreamSerialisable {
 
         private byte _value = 0;
 
