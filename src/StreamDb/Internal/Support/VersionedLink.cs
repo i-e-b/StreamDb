@@ -7,7 +7,7 @@ namespace StreamDb.Internal.Support
     /// <summary>
     /// A pair of versioned page links, and calls to read and update them
     /// </summary>
-    public class VersionedLink : IByteSerialisable {
+    public class VersionedLink : IStreamSerialisable {
         [NotNull] private PageLink _linkA;
         [NotNull] private PageLink _linkB;
 
@@ -109,38 +109,32 @@ namespace StreamDb.Internal.Support
         }
 
         /// <inheritdoc />
-        public byte[] ToBytes()
+        public Stream Freeze()
         {
-            using (var ms = new MemoryStream(ByteSize))
-            {
-                var w = new BinaryWriter(ms);
-                WriteLink(w, _linkA);
-                WriteLink(w, _linkB);
-                
-                ms.Seek(0, SeekOrigin.Begin);
-                return ms.ToArray() ?? throw new Exception();
-            }
+            var ms = new MemoryStream(ByteSize);
+            var w = new BinaryWriter(ms);
+            WriteLink(w, _linkA);
+            WriteLink(w, _linkB);
+
+            ms.Seek(0, SeekOrigin.Begin);
+            return ms;
         }
 
         /// <inheritdoc />
-        public void FromBytes(byte[] source)
+        public void Defrost(Stream source)
         {
             if (source == null || source.Length < ByteSize) throw new Exception("VersionedLink.FromBytes: data was too short.");
-            using (var ms = new MemoryStream(source))
+            var r = new BinaryReader(source);
+            _linkA = new PageLink
             {
-                ms.Seek(0, SeekOrigin.Begin);
-                var r = new BinaryReader(ms);
-                _linkA = new PageLink
-                {
-                    Version = new MonotonicByte(r.ReadByte()),
-                    PageId = r.ReadInt32()
-                };
-                _linkB = new PageLink
-                {
-                    Version = new MonotonicByte(r.ReadByte()),
-                    PageId = r.ReadInt32()
-                };
-            }
+                Version = new MonotonicByte(r.ReadByte()),
+                PageId = r.ReadInt32()
+            };
+            _linkB = new PageLink
+            {
+                Version = new MonotonicByte(r.ReadByte()),
+                PageId = r.ReadInt32()
+            };
         }
     }
 }

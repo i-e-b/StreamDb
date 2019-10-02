@@ -9,7 +9,7 @@ namespace TracingApp
     {
         // For memory tracing:
         const int OVERWRITE_COUNT = 2;
-        const int DOCUMENT_COUNT = 10;
+        const int DOCUMENT_COUNT = 15;
 
         // For call/performance tracing:
         //const int OVERWRITE_COUNT = 10;

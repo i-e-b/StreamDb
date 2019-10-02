@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using JetBrains.Annotations;
 using StreamDb.Internal.Support;
 
@@ -8,7 +9,7 @@ namespace StreamDb.Internal.DbStructure
     /// <summary>
     /// Represents a generalised page in the DB with known contents
     /// </summary>
-    public class Page<T> : Page where T : IByteSerialisable, new()
+    public class Page<T> : Page where T : IStreamSerialisable, new()
     {
         /// <summary>
         /// Snapshot of the page content when it was loaded
@@ -20,16 +21,16 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         /// <param name="pageId">pageID that has been loaded</param>
         /// <param name="bytes">page data</param>
-        public Page(int pageId, byte[] bytes)
+        public Page(int pageId, Stream bytes)
         {
-            FromBytes(bytes);
+            Defrost(bytes);
 
             if (!ValidateCrc()) throw new Exception("Page<T>.ctor: CRC failed");
 
             OriginalPageId = pageId;
 
             var v = new T();
-            v.FromBytes(GetData());
+            v.Defrost(GetDataStream());
             View = v;
         }
 
@@ -38,7 +39,7 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         [NotNull]public static Page<T> FromRaw(Page rawPage) {
             if (rawPage == null) throw new ArgumentNullException(nameof(rawPage));
-            return new Page<T>(rawPage.OriginalPageId, rawPage._data);
+            return new Page<T>(rawPage.OriginalPageId, new MemoryStream(rawPage._data));
         }
 
         /// <summary>
@@ -46,7 +47,7 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         public void SyncView()
         {
-            var bytes = View.ToBytes();
+            var bytes = View.Freeze();
             Write(bytes, 0, 0, bytes.Length);
             UpdateCRC();
         }
@@ -56,7 +57,7 @@ namespace StreamDb.Internal.DbStructure
     /// Represents a generalised page in the DB.
     /// At the moment these are fixed to 4kb for data + headers
     /// </summary>
-    public class Page : IByteSerialisable {
+    public class Page : IStreamSerialisable {
 
         /// <summary>
         /// Size of a page in storage, including all headers and data
@@ -212,14 +213,14 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public byte[] ToBytes() { return _data; }
+        public Stream Freeze() { return new MemoryStream(_data); }
 
         /// <inheritdoc />
-        public void FromBytes(byte[] source)
+        public void Defrost(Stream source)
         {
             if (source == null) throw new Exception("Page source was null");
-            if (source.Length != PageRawSize) throw new Exception("Page source was not the correct size");
-            for (int i = 0; i < PageRawSize; i++) { _data[i] = source[i]; } // copy across
+            if (source.Length != PageRawSize) throw new Exception($"Page source was not the correct size. Expected {PageRawSize}, got {source.Length}");
+            source.Read(_data, 0, PageRawSize);
         }
 
         public void UpdateCRC()
@@ -264,6 +265,28 @@ namespace StreamDb.Internal.DbStructure
                 NextPageId = Math.Max(NextPageId, writeExtent);
             }
         }
+        
+        /// <summary>
+        /// Copy data from a buffer into the data section of the page
+        /// </summary>
+        /// <param name="input">Input data</param>
+        /// <param name="inputOffset">offset into the input data to start</param>
+        /// <param name="pageOffset">offset into the page data</param>
+        /// <param name="length">number of bytes to copy</param>
+        public void Write(Stream input, int inputOffset, int pageOffset, long length)
+        {
+            if (input == null) return;
+            if (inputOffset + length > input.Length) throw new Exception("Page Write exceeds input size");
+            if (pageOffset + length > PageDataCapacity) throw new Exception("Page Write exceeds page size");
+
+            input.Read(_data, PAGE_DATA+pageOffset, (int)length);
+
+            if (NextPageId < 0) {
+                // adjust length
+                int writeExtent = (int)(NextIdForEmptyPage + (pageOffset + length));
+                NextPageId = Math.Max(NextPageId, writeExtent);
+            }
+        }
 
         /// <summary>
         /// Copy data from the data section of the page into a buffer
@@ -282,6 +305,16 @@ namespace StreamDb.Internal.DbStructure
             {
                 buffer[i + bufferOffset] = _data[PAGE_DATA + pageOffset + i];
             }
+        }
+
+        /// <summary>
+        /// Get a stream over the page data.
+        /// This may be offset to start at the contents, so be careful with seeking
+        /// </summary>
+        [NotNull]public Stream GetDataStream() {
+            var ms = new MemoryStream(_data);
+            ms.Seek(PAGE_DATA, SeekOrigin.Begin);
+            return ms;
         }
 
         [NotNull]public byte[] GetData()

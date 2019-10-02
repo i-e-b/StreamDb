@@ -8,7 +8,7 @@ namespace StreamDb.Internal.DbStructure
     /// <summary>
     /// Content of a single index page
     /// </summary>
-    public class IndexPage : IByteSerialisable
+    public class IndexPage : IStreamSerialisable
     {
 
         const int EntryCount = 126; // 2+4+8+16+32+64
@@ -157,42 +157,36 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public void FromBytes(byte[] source)
+        public void Defrost(Stream source)
         {
             if (source == null || source.Length < PackedSize) throw new Exception("IndexPage.FromBytes: data was too short.");
-            using (var ms = new MemoryStream(source))
+            var r = new BinaryReader(source);
+
+            for (int i = 0; i < EntryCount; i++)
             {
-                ms.Seek(0, SeekOrigin.Begin);
-                var r = new BinaryReader(ms);
+                var bytes = r.ReadBytes(16);
+                if (bytes == null) throw new Exception("Failed to read doc guid");
+                _docIds[i] = new Guid(bytes);
 
-                for (int i = 0; i < EntryCount; i++)
-                {
-                    var bytes = r.ReadBytes(16);
-                    if (bytes == null) throw new Exception("Failed to read doc guid");
-                    _docIds[i] = new Guid(bytes);
 
-                    
-                    _links[i].FromBytes(r.ReadBytes(VersionedLink.ByteSize));
-                }
+                _links[i].Defrost(r.BaseStream);
             }
         }
-        
+
         /// <inheritdoc />
-        public byte[] ToBytes()
+        public Stream Freeze()
         {
-            using (var ms = new MemoryStream(PackedSize))
+            var ms = new MemoryStream(PackedSize);
+            var w = new BinaryWriter(ms);
+
+            for (int i = 0; i < EntryCount; i++)
             {
-                var w = new BinaryWriter(ms);
-
-                for (int i = 0; i < EntryCount; i++)
-                {
-                    w.Write(_docIds[i].ToByteArray());
-                    w.Write(_links[i].ToBytes());
-                }
-
-                ms.Seek(0, SeekOrigin.Begin);
-                return ms.ToArray() ?? throw new Exception();
+                w.Write(_docIds[i].ToByteArray());
+                _links[i].Freeze().CopyTo(ms);
             }
+
+            ms.Seek(0, SeekOrigin.Begin);
+            return ms;
         }
     }
 }

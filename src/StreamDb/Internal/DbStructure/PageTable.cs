@@ -111,10 +111,11 @@ namespace StreamDb.Internal.DbStructure
             var w = _storage.AcquireWriter();
             try {
                 w.Seek(0, SeekOrigin.Begin);
-                w.Write(root.ToBytes());
-                w.Write(index.ToBytes());
-                w.Write(free.ToBytes());
-                w.Write(path.ToBytes());
+
+                root.Freeze().CopyTo(w.BaseStream);
+                index.Freeze().CopyTo(w.BaseStream);
+                free.Freeze().CopyTo(w.BaseStream);
+                path.Freeze().CopyTo(w.BaseStream);
             }
             finally 
             {
@@ -135,7 +136,8 @@ namespace StreamDb.Internal.DbStructure
                 Dirty = true,
                 FirstPageId = 3
             };
-            var bytes = path0.ToBytes();
+            var bytes = path0.Freeze();
+            
             page.Write(bytes, 0, 0, bytes.Length);
             page.UpdateCRC();
             return page;
@@ -153,7 +155,7 @@ namespace StreamDb.Internal.DbStructure
                 Dirty = true,
                 FirstPageId = 2
             };
-            var bytes = free0.ToBytes();
+            var bytes = free0.Freeze();
             page.Write(bytes, 0, 0, bytes.Length);
             page.UpdateCRC();
             return page;
@@ -171,7 +173,7 @@ namespace StreamDb.Internal.DbStructure
                 Dirty = true,
                 FirstPageId = 1
             };
-            var indexBytes = index0.ToBytes();
+            var indexBytes = index0.Freeze();
             index.Write(indexBytes, 0, 0, indexBytes.Length);
             index.UpdateCRC();
             return index;
@@ -189,7 +191,7 @@ namespace StreamDb.Internal.DbStructure
                 Dirty = true,
                 FirstPageId = 0
             };
-            var rootBytes = root0.ToBytes();
+            var rootBytes = root0.Freeze();
             root.Write(rootBytes, 0, 0, rootBytes.Length);
             root.UpdateCRC();
             return root;
@@ -198,7 +200,7 @@ namespace StreamDb.Internal.DbStructure
         /// <summary>
         /// Read a specific existing page by Page ID. Returns null if the page does not exist.
         /// </summary>
-        [CanBeNull]public Page<T> GetPageView<T>(int pageId) where T : IByteSerialisable, new()
+        [CanBeNull]public Page<T> GetPageView<T>(int pageId) where T : IStreamSerialisable, new()
         {
             var reader = _storage.AcquireReader();
             try {
@@ -211,8 +213,7 @@ namespace StreamDb.Internal.DbStructure
                 if (reader.BaseStream.Length < byteEnd) return null;
 
                 reader.BaseStream.Seek(byteOffset, SeekOrigin.Begin);
-                var bytes = reader.ReadBytes(Page.PageRawSize);
-                return new Page<T>(pageId, bytes);
+                return new Page<T>(pageId, new Substream(reader.BaseStream, Page.PageRawSize));
             } finally {
                 _storage.Release(ref reader);
             }
@@ -230,10 +231,9 @@ namespace StreamDb.Internal.DbStructure
                 if (reader.BaseStream.Length < byteEnd) throw new Exception($"Database stream is truncated at page {pageId}");
 
                 reader.BaseStream.Seek(byteOffset, SeekOrigin.Begin);
-                var bytes = reader.ReadBytes(Page.PageRawSize);
                 
                 var result = new Page();
-                result.FromBytes(bytes);
+                result.Defrost(new Substream(reader.BaseStream, Page.PageRawSize));
                 result.OriginalPageId = pageId;
                 if (!result.ValidateCrc()) throw new Exception($"CRC failed at page {pageId}");
                 return result;
@@ -250,7 +250,7 @@ namespace StreamDb.Internal.DbStructure
             if (!page.ValidateCrc()) throw new Exception("PageTable.ReadRoot: Root entry failed CRC check. Must recover database.");
 
             var final = new RootPage();
-            final.FromBytes(page.GetData());
+            final.Defrost(page.GetDataStream());
             _rootPageCache = final;
             return final;
         }
@@ -384,7 +384,7 @@ namespace StreamDb.Internal.DbStructure
             }
     
             // end of chain. Extend it.
-            var newPage = ChainPage(freeLink, new FreeListPage().ToBytes(), -1);
+            var newPage = ChainPage(freeLink, new FreeListPage().Freeze(), -1);
             return Page<FreeListPage>.FromRaw(newPage);
         }
 
@@ -395,10 +395,10 @@ namespace StreamDb.Internal.DbStructure
         /// <param name="other">End of a page chain.</param>
         /// <param name="optionalContent">Data bytes to insert, if any</param>
         /// <param name="contentLength">Length of data to use. To use entire buffer, you can pass -1</param>
-        [NotNull]public Page ChainPage([CanBeNull] Page other, [CanBeNull] byte[] optionalContent, int contentLength) {
+        [NotNull]public Page ChainPage([CanBeNull] Page other, [CanBeNull]Stream optionalContent, int contentLength) {
             if (optionalContent == null) contentLength = 0;
             else if (contentLength > optionalContent.Length) throw new Exception("Page content length requested is outside of buffer provided");
-            else if (contentLength < 0) contentLength = optionalContent.Length; // allow `-1` for whole buffer
+            else if (contentLength < 0) contentLength = (int)optionalContent.Length; // allow `-1` for whole buffer
 
             var nextPageValue = Page.NextIdForEmptyPage + contentLength;
 
@@ -450,7 +450,7 @@ namespace StreamDb.Internal.DbStructure
         /// Write a page into the storage stream. The PageID *MUST* be correct.
         /// This method is very thread sensitive
         /// </summary>
-        public void CommitPage<T>(Page<T> page) where T : IByteSerialisable, new()
+        public void CommitPage<T>(Page<T> page) where T : IStreamSerialisable, new()
         {
             page?.SyncView();
             CommitPage((Page)page);
@@ -480,8 +480,7 @@ namespace StreamDb.Internal.DbStructure
         private void CommitPage([NotNull]Page page, [NotNull]BinaryWriter w)
         {
             w.Seek(page.OriginalPageId * Page.PageRawSize, SeekOrigin.Begin);
-            var buf = page.ToBytes();
-            w.Write(buf);
+            page.Freeze().CopyTo(w.BaseStream);
             page.Dirty = false;
         }
 
@@ -498,8 +497,8 @@ namespace StreamDb.Internal.DbStructure
             Page page = null;
             var buf = new byte[Page.PageDataCapacity];
             int bytes;
-            while ((bytes = docDataStream.Read(buf,0,buf.Length)) > 0) {
-                var next = ChainPage(page, buf, bytes);
+            while ((bytes = docDataStream.Read(buf,0,buf.Length)) > 0) { // TODO: optimise this now we've switched to streams
+                var next = ChainPage(page, new MemoryStream(buf), bytes);
 
                 if (next.PageType == PageType.Invalid) { // first page
                     next.PageType = PageType.Data;
@@ -552,7 +551,7 @@ namespace StreamDb.Internal.DbStructure
     
             // end of chain. Extend it?
             if (!shouldAdd) return null;
-            var newPage = ChainPage(indexLink, new IndexPage().ToBytes(), -1);
+            var newPage = ChainPage(indexLink, new IndexPage().Freeze(), -1);
             return Page<IndexPage>.FromRaw(newPage);
         }
 
@@ -680,7 +679,7 @@ namespace StreamDb.Internal.DbStructure
             // 2. Figure out how long the current stored data is
             // 3. Append only the new data (continue in the last page)
 
-            using (var newPathData = new MemoryStream(_pathIndexCache.ToBytes()))
+            using (var newPathData = _pathIndexCache.Freeze())
             {
                 var raw = GetPageRaw(ReadRoot().GetPathLookupBase());
                 if (raw == null) throw new Exception("Path lookup pages lost");
@@ -700,7 +699,7 @@ namespace StreamDb.Internal.DbStructure
         /// Write the root cache back to storage.
         /// This should be done as soon as possible if the root page is changed.
         /// </summary>
-        private void CommitRootCache()
+        public void CommitRootCache()
         {
             if (_rootPageCache == null) return;
 

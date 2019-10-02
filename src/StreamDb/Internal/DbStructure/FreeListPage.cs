@@ -1,5 +1,4 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using JetBrains.Annotations;
 using StreamDb.Internal.Support;
 
@@ -26,7 +25,7 @@ namespace StreamDb.Internal.DbStructure
     /// The free list provides no protection from double-free. The caller should check the returned page
     /// is not in use (with page type and document id).
     /// </remarks>
-    public class FreeListPage: IByteSerialisable
+    public class FreeListPage: IStreamSerialisable
     {
         [NotNull]private readonly int[] _entries;
         public const int Capacity = Page.PageDataCapacity / sizeof(int);
@@ -73,33 +72,26 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public byte[] ToBytes()
+        public Stream Freeze()
         {
-            using (var ms = new MemoryStream(Capacity * sizeof(int)))
+            var ms = new MemoryStream(Capacity * sizeof(int));
+            var w = new BinaryWriter(ms);
+            for (int i = 0; i < _entries.Length; i++)
             {
-                var w = new BinaryWriter(ms);
-                for (int i = 0; i < _entries.Length; i++)
-                {
-                    w.Write(_entries[i]);
-                }
-                ms.Seek(0, SeekOrigin.Begin);
-                return ms.ToArray() ?? throw new InvalidOperationException();
+                w.Write(_entries[i]);
             }
+            ms.Seek(0, SeekOrigin.Begin);
+            return ms;
         }
 
         /// <inheritdoc />
-        public void FromBytes(byte[] source)
+        public void Defrost(Stream source)
         {
             if (source == null) return;
-            using (var ms = new MemoryStream(source))
+            var r = new BinaryReader(source);
+            for (int i = 0; i < _entries.Length; i++)
             {
-                ms.Seek(0, SeekOrigin.Begin);
-
-                var r = new BinaryReader(ms);
-                for (int i = 0; i < _entries.Length; i++)
-                {
-                    _entries[i] = r.ReadInt32();
-                }
+                _entries[i] = r.ReadInt32();
             }
         }
     }

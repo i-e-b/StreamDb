@@ -9,7 +9,7 @@ namespace StreamDb.Internal.DbStructure
     /// Data structure for the root page. This is a versioned list of the starting points for the index/free tables.
     /// This page should be updated very rarely.
     /// </summary>
-    public class RootPage:IByteSerialisable
+    public class RootPage:IStreamSerialisable
     {
         [NotNull]public readonly VersionedLink IndexLink;
         [NotNull]public readonly VersionedLink FreeListLink;
@@ -24,34 +24,27 @@ namespace StreamDb.Internal.DbStructure
 
 
         /// <inheritdoc />
-        public void FromBytes(byte[] source)
+        public void Defrost(Stream source)
         {
             if (source == null) throw new Exception("IndexPage.FromBytes: data was too short.");
-            using (var ms = new MemoryStream(source))
-            {
-                ms.Seek(0, SeekOrigin.Begin);
-                var r = new BinaryReader(ms);
+            var r = new BinaryReader(source);
 
-                FreeListLink.FromBytes(r.ReadBytes(VersionedLink.ByteSize));
-                IndexLink.FromBytes(r.ReadBytes(VersionedLink.ByteSize));
-                PathLookupLink.FromBytes(r.ReadBytes(VersionedLink.ByteSize));
-            }
+            FreeListLink.Defrost(r.BaseStream);
+            IndexLink.Defrost(r.BaseStream);
+            PathLookupLink.Defrost(r.BaseStream);
         }
-        
+
         /// <inheritdoc />
-        public byte[] ToBytes()
+        public Stream Freeze()
         {
-            using (var ms = new MemoryStream())
-            {
-                var w = new BinaryWriter(ms);
+            var ms = new MemoryStream();
 
-                w.Write(FreeListLink.ToBytes());
-                w.Write(IndexLink.ToBytes());
-                w.Write(PathLookupLink.ToBytes());
+            FreeListLink.Freeze().CopyTo(ms);
+            IndexLink.Freeze().CopyTo(ms);
+            PathLookupLink.Freeze().CopyTo(ms);
 
-                ms.Seek(0, SeekOrigin.Begin);
-                return ms.ToArray() ?? throw new Exception();
-            }
+            ms.Seek(0, SeekOrigin.Begin);
+            return ms;
         }
 
         /// <summary>

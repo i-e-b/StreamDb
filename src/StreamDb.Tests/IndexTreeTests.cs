@@ -75,7 +75,7 @@ namespace StreamDb.Tests
 
             Console.WriteLine($"{i} attempts at random inserts. {j} succeeded ({capacity:0.#} % full), {k} failed; Took {sw.Elapsed}");
 
-            var bytes = subject.ToBytes();
+            var bytes = subject.Freeze();
             Assert.That(bytes.Length, Is.LessThan(Page.PageDataCapacity));
             Console.WriteLine($"Index page is {bytes.Length} bytes (out of {Page.PageDataCapacity})");
         }
@@ -133,10 +133,10 @@ namespace StreamDb.Tests
             // fill up with other wrong keys
             for (int i = 0; i < 200; i++) { original.TryInsert(Guid.NewGuid(), 123); }
 
-            var bytes = original.ToBytes();
+            var bytes = original.Freeze();
 
             var result = new IndexPage();
-            result.FromBytes(bytes);
+            result.Defrost(bytes);
 
             var found = result.Search(key, out var link);
             Assert.That(found, Is.True, "Failed to find target");

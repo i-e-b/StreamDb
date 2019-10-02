@@ -145,7 +145,7 @@ namespace StreamDb.Tests
         
 
         [Test, Explicit("Slow test")]
-        public void stress_test_write (){
+        public void stress_test_overwrite (){
             using (var doc = MakeTestDocument())
             using (var ms = new MemoryStream())
             {
@@ -167,6 +167,29 @@ namespace StreamDb.Tests
 
                     Console.WriteLine($"Done. Filled database is {(ms.Length / 1048576.0):#.00}MB");
                 }
+            }
+        }
+        
+        [Test, Explicit("Slow test")]
+        public void stress_test_unique_write (){
+            using (var doc = MakeTestDocument())
+            using (var ms = new MemoryStream())
+            {
+                var subject = Database.TryConnect(ms);
+
+                Console.WriteLine($"Empty database is {ms.Length / 1024}kb");
+
+                // write lots of documents, all in new document chains
+                Console.Write("Writing a 1000 documents");
+
+                for (int i = 0; i < 1000; i++)
+                {
+                    Console.Write(".");
+                    doc.Seek(0, SeekOrigin.Begin);
+                    subject.WriteDocument($"testdata-{i}", doc);
+                }
+
+                Console.WriteLine($"Done. Filled database is {(ms.Length / 1048576.0):#.00}MB");
             }
         }
         
