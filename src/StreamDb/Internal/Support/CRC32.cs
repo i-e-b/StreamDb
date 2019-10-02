@@ -22,22 +22,20 @@ namespace StreamDb.Internal.Support
             defaultTable = createTable;
         }
 
-        // TODO: Look at https://github.com/stbrumme/crc32/blob/master/Crc32.cpp
-        //        We should be able to get a much faster CRC
+        /// <summary>
+        /// Compute the CRC for 
+        /// </summary>
+        /// <param name="buffer"></param>
+        /// <returns></returns>
         public static uint Compute(byte[] buffer)
         {
             if (buffer == null) return 0;
-            return ~CalculateHash(defaultTable, DefaultSeed, buffer, 0, buffer.Length);
-        }
-
-        private static uint CalculateHash([NotNull]uint[] table, uint seed, [NotNull]byte[] buffer, int start, int size)
-        {
-            var crc = seed;
-            for (int i = start; i < size; i++)
+            var crc = DefaultSeed;
+            for (int i = 0; i < buffer.Length; i++)
             {
-                crc = (crc >> 8) ^ table[buffer[i] ^ (crc & 0xff)];
+                crc = (crc >> 8) ^ defaultTable[buffer[i] ^ (crc & 0xff)];
             }
-            return crc;
+            return ~crc;
         }
     }
 }
