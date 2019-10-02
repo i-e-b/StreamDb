@@ -116,20 +116,24 @@ namespace StreamDb.Internal.Support
             var remaining = count;
             while (remaining > 0)
             {
-                var chunkEnd = Math.Min(page.PageDataLength, chunkOffset + remaining);
-                var chunkLength = chunkEnd - chunkOffset;
+                var chunkEnd = Page.PageDataCapacity;
+                var chunkLength = Math.Min(chunkEnd - chunkOffset, remaining);
 
                 if (chunkLength > 0)
                 {
                     page.Write(buffer, offset, chunkOffset, chunkLength);
+                    _parent.CommitPage(page);
 
                     remaining -= chunkLength;
                     offset += chunkLength;
                     _requestedOffset += chunkLength;
                 }
 
+                if (remaining == 0) break;
+
                 chunkOffset = 0;
-                // step page
+
+                // extend page chain
                 var next = _parent.WalkPageChain(page);
                 if (next == null) next = _parent.ChainPage(page, null, -1);
                 page = next;
@@ -138,7 +142,7 @@ namespace StreamDb.Internal.Support
         /// <inheritdoc />
         public override bool CanRead => true;
         public override bool CanSeek => true;
-        public override bool CanWrite => false;
+        public override bool CanWrite => _enableWriting;
 
         /// <inheritdoc />
         public override long Length

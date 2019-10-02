@@ -128,7 +128,7 @@ namespace StreamDb.Internal.DbStructure
             var page = new Page
             {
                 PageType = PageType.PathLookup,
-                NextPageId = -1,
+                NextPageId = Page.NextIdForEmptyPage,
                 PrevPageId = -1,
                 DocumentSequence = 0,
                 DocumentId = Page.PathLookupGuid,
@@ -146,7 +146,7 @@ namespace StreamDb.Internal.DbStructure
             var page = new Page
             {
                 PageType = PageType.ExpiredList,
-                NextPageId = -1,
+                NextPageId = Page.NextIdForEmptyPage,
                 PrevPageId = -1,
                 DocumentSequence = 0,
                 DocumentId = Page.FreePageGuid,
@@ -164,7 +164,7 @@ namespace StreamDb.Internal.DbStructure
             var index = new Page
             {
                 PageType = PageType.Index,
-                NextPageId = -1,
+                NextPageId = Page.NextIdForEmptyPage,
                 PrevPageId = -1,
                 DocumentSequence = 0,
                 DocumentId = Page.IndexTreeGuid,
@@ -182,7 +182,7 @@ namespace StreamDb.Internal.DbStructure
             var root = new Page
             {
                 PageType = PageType.Root,
-                NextPageId = -1,
+                NextPageId = Page.NextIdForEmptyPage,
                 PrevPageId = -1,
                 DocumentSequence = 0,
                 DocumentId = Page.RootDocumentGuid,
@@ -594,18 +594,6 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <summary>
-        /// Present a stream to read from a document, recovered by ID.
-        /// Returns null if the document is not found.
-        /// Allows writing, use with caution.
-        /// </summary>
-        [CanBeNull]public Stream ReadWriteDocument(Guid docId)
-        {
-            var pageId = GetPageIdFromDocumentId(docId);
-            if (pageId < 1) return null;
-            return new PageTableStream(this, GetPageRaw(pageId), true);
-        }
-
-        /// <summary>
         /// Find a specific page in a chain, by document sequence number.
         /// If the chain does not contain this sequence, method will return null
         /// </summary>
@@ -693,16 +681,24 @@ namespace StreamDb.Internal.DbStructure
             // 3. Append only the new data (continue in the last page) -- just like in the unit tests
 
 
-            using (var data = new MemoryStream(_pathIndexCache.ToBytes()))
+            using (var newPathData = new MemoryStream(_pathIndexCache.ToBytes()))
             {
-                var doc =  ReadWriteDocument(Page.PathLookupGuid);
+                var raw = GetPageRaw(ReadRoot().GetPathLookupBase());
+                if (raw == null) throw new Exception("Path lookup pages lost");
+                var existingDoc = new PageTableStream(this, raw, true);
 
-                if (doc.Length == data.Length) return; // no changes
-                if (doc.Length > data.Length) throw new Exception("Path lookup structure was truncated"); // Should we write a new chain at this point?
+                if (existingDoc.Length == newPathData.Length) return; // no changes
+                if (existingDoc.Length > newPathData.Length) throw new Exception($"Path lookup structure was truncated: {existingDoc.Length} > {newPathData.Length}"); // Should we write a new chain at this point?
 
-                data.Seek(doc.Length - 1, SeekOrigin.Begin); // seek to just before the 'end' marker of the existing document
-                doc.Seek(-1, SeekOrigin.End); // Trim off 'end' marker.
-                data.CopyTo(doc);
+                // Should be just extending the existing data...
+                //data.Seek(doc.Length - 1, SeekOrigin.Begin); // seek to just before the 'end' marker of the existing document
+                //doc.Seek(-1, SeekOrigin.End); // Trim off 'end' marker.
+                //data.CopyTo(doc);
+
+                // but to test, we will overwrite the whole thing
+                newPathData.Seek(0, SeekOrigin.Begin);
+                existingDoc.Seek(0, SeekOrigin.Begin);
+                newPathData.CopyTo(existingDoc);
             }
 
 /*

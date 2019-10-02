@@ -260,7 +260,7 @@ namespace StreamDb.Internal.DbStructure
 
             if (NextPageId < 0) {
                 // adjust length
-                var writeExtent = NextIdForEmptyPage + (pageOffset + length - 1);
+                var writeExtent = NextIdForEmptyPage + (pageOffset + length);
                 NextPageId = Math.Max(NextPageId, writeExtent);
             }
         }
