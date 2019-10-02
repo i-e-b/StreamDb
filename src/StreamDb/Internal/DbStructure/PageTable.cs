@@ -675,11 +675,10 @@ namespace StreamDb.Internal.DbStructure
             if (_pathIndexCache == null) return;
 
 
-            // New plan:
+            // Plan:
             // 1. Serialise the in-memory lookup
             // 2. Figure out how long the current stored data is
-            // 3. Append only the new data (continue in the last page) -- just like in the unit tests
-
+            // 3. Append only the new data (continue in the last page)
 
             using (var newPathData = new MemoryStream(_pathIndexCache.ToBytes()))
             {
@@ -690,50 +689,11 @@ namespace StreamDb.Internal.DbStructure
                 if (existingDoc.Length == newPathData.Length) return; // no changes
                 if (existingDoc.Length > newPathData.Length) throw new Exception($"Path lookup structure was truncated: {existingDoc.Length} > {newPathData.Length}"); // Should we write a new chain at this point?
 
-                // Should be just extending the existing data...
-                //data.Seek(doc.Length - 1, SeekOrigin.Begin); // seek to just before the 'end' marker of the existing document
-                //doc.Seek(-1, SeekOrigin.End); // Trim off 'end' marker.
-                //data.CopyTo(doc);
-
-                // but to test, we will overwrite the whole thing
-                newPathData.Seek(0, SeekOrigin.Begin);
-                existingDoc.Seek(0, SeekOrigin.Begin);
-                newPathData.CopyTo(existingDoc);
+                // Write only the new data to the stream
+                newPathData.Seek(existingDoc.Length - 1, SeekOrigin.Begin);
+                existingDoc.Seek(existingDoc.Length - 1, SeekOrigin.Begin);
+                newPathData.CopyTo(existingDoc); // writing to this stream commits the pages
             }
-
-/*
-            // OLD STUFF:
-            using (var data = new MemoryStream(_pathIndexCache.ToBytes()))
-            {
-                data.Seek(0, SeekOrigin.Begin);
-
-                // build new page chain for data:
-                Page page = null;
-                var buf = new byte[Page.PageDataCapacity];
-                while (data.Read(buf, 0, buf.Length) > 0)
-                {
-                    var next = ChainPage(page, buf, -1);
-
-                    if (next.PageType == PageType.Invalid)
-                    { // first page
-                        next.PageType = PageType.PathLookup;
-                        next.DocumentId = Page.PathLookupGuid;
-                        CommitPage(next);
-                    }
-
-                    page = next;
-                }
-                if (page == null) throw new Exception("Failed to commit path index cache to database");
-
-                // Now update the root page
-                var root = ReadRoot();
-                root.AddPathLookup(page.FirstPageId, out var expired);
-                CommitRootCache(); // <-- would like to avoid this by having an append-only path lookup
-                if (expired > 0) {
-                    DeletePageChain(expired);
-                }
-            }
-            */
         }
 
         /// <summary>

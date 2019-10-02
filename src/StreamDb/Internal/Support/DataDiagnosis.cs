@@ -6,7 +6,7 @@ namespace StreamDb.Internal.Support
     public static class DataDiagnosis
     {
 
-        public static string StreamToHex(this Stream s)
+        public static string ToHexString(this Stream s)
         {
             if (s == null) return "<null>";
             s.Seek(0, SeekOrigin.Begin);

@@ -11,6 +11,7 @@ namespace StreamDb.Internal.Support
     public class PageTableStream : Stream {
         [NotNull]private readonly PageTable _parent;
         [NotNull]private readonly Page _endPage;
+        [CanBeNull]private Page _mostRecentPage; // used to reduce scanning
         private readonly bool _enableWriting;
         private long _requestedOffset;
 
@@ -42,8 +43,7 @@ namespace StreamDb.Internal.Support
 
             if (pageNumber < 0 || pageNumber > _endPage.DocumentSequence) return 0; // off the ends
 
-
-            var page = _parent.FindPageInChain(_endPage, pageNumber);
+            var page = FindPage(pageNumber);
             if (page == null) return 0; // out of bounds
 
             var remaining = count;
@@ -66,7 +66,14 @@ namespace StreamDb.Internal.Support
                 page = _parent.WalkPageChain(page);
                 if (page == null) break;
             }
+            _mostRecentPage = page;
             return read;
+        }
+
+        private Page FindPage(int pageNumber)
+        {
+            if (_mostRecentPage?.DocumentSequence == pageNumber) { return _mostRecentPage; }
+            return _parent.FindPageInChain(_endPage, pageNumber);
         }
 
         /// <summary>
@@ -74,24 +81,25 @@ namespace StreamDb.Internal.Support
         /// </summary>
         public override long Seek(long offset, SeekOrigin origin)
         {
-            switch (origin) {
+            switch (origin)
+            {
                 case SeekOrigin.Begin:
                     _requestedOffset = offset;
                     return _requestedOffset;
 
                 case SeekOrigin.Current:
-                    _requestedOffset+= offset;
+                    _requestedOffset += offset;
                     return _requestedOffset;
 
                 case SeekOrigin.End:
-                    _requestedOffset = Length - offset;
+                    _requestedOffset = Length + offset;
                     return _requestedOffset;
 
                 default: throw new Exception("Non exhaustive switch");
             }
         }
 
-        public override void SetLength(long value) { }
+        public override void SetLength(long value) { throw new Exception("Page content streams are read-only"); }
 
         /// <summary>Writes a sequence of bytes to the current stream and advances the current position within this stream by the number of bytes written.</summary>
         /// <param name="buffer">An array of bytes. This method copies <paramref name="count" /> bytes from <paramref name="buffer" /> to the current stream. </param>
@@ -110,7 +118,7 @@ namespace StreamDb.Internal.Support
             if (pageNumber < 0 || pageNumber > _endPage.DocumentSequence) return; // off the ends
             // we don't support seeking outside the existing range
 
-            var page = _parent.FindPageInChain(_endPage, pageNumber);
+            var page = FindPage(pageNumber);
             if (page == null) return; // out of bounds
 
             var remaining = count;
@@ -138,6 +146,7 @@ namespace StreamDb.Internal.Support
                 if (next == null) next = _parent.ChainPage(page, null, -1);
                 page = next;
             }
+            _mostRecentPage = page;
         }
         /// <inheritdoc />
         public override bool CanRead => true;

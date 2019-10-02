@@ -29,14 +29,14 @@ A minimalist database that uses only Streams as storage, and can survive power l
 ## To-do:
 
 * [x] Re-write path lookup serialisation, so that it's append only
-* [ ] Update path lookup pages to append data
+* [x] Update path lookup pages to append data
 * [ ] Improve page structure to support more robust versioning
 * [x] Support partly-full pages at the page header level
 * [ ] Improve data transport to reduce copying and GC
 
 ## Notes:
 
-Need a 'dirty' mechanism for pages -- the CRC checks are taking 50% of run time!
+The CRC checks are taking 50% of run time.
 
 For testing, a stream wrapper that stops writing at a random point (but still acts like it's writing). Run that loads of times to fuzz.
 

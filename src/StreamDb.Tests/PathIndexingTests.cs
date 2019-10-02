@@ -221,27 +221,20 @@ namespace StreamDb.Tests
             // get extended
             var bytes2 = source.ToBytes();
             Assert.That(bytes2.Length, Is.GreaterThan(bytes1.Length), "Adding entries did not change the serialised size");
-
-            // TODO:
-            // The tighter serial representation is better, but we still can's do simple extend-only.
-            // This is because the tree can extend at any point, so our flags and forking can change
-            // anywhere is the structure.
-            // 
-            // Maybe we could use reverse pointers in the serialised form?
-            // Plan:
-            // Have a temp array 1:1 with the entries array. Each slot holds one of [ no-link | left | right | middle ] and an index.
-            // When we serialise, we don't write the forward links, but fill in the entry for the target.
-            // If the entry we are serialising has something other than 'no-link' in its slot, we write that in the output at that point.
-            // When deserialising, when we come across a back link, we fill in the reverse target to make it a forwards link again.
             
+            // illustrate data
             Console.WriteLine(bytes1.ToHexString());
             Console.WriteLine(bytes2.ToHexString());
 
             // make a new one with only the added bytes
-            var bytes3 = new byte[bytes2.Length];
-            var crossOver = bytes1.Length - 1; // note, we need to truncate the 'END_MARKER' byte from the shorter one
-            for (int i = 0; i < crossOver; i++) { bytes3[i] = bytes1[i]; }
-            for (int i = crossOver; i < bytes2.Length; i++) { bytes3[i] = bytes2[i]; }
+            byte[] bytes3;
+
+            using (var tmp = new MemoryStream()){
+                tmp.Write(bytes1, 0, bytes1.Length);
+                tmp.Write(bytes2, bytes1.Length - 1, (bytes2.Length - bytes1.Length) + 1);
+                tmp.Seek(0, SeekOrigin.Begin);
+                bytes3 = tmp.ToArray();
+            }
 
             Console.WriteLine(bytes3.ToHexString()); // should end up the same as bytes2
 

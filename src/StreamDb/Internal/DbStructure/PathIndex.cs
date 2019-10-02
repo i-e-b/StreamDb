@@ -20,9 +20,10 @@ namespace StreamDb.Internal.DbStructure
     {
         // Serialisation tags:
         const byte START_MARKER = 0xFF;
-        const byte END_MARKER   = 0x55;
         const byte INDEX_MARKER = 0xF0;
         const byte DATA_MARKER  = 0x0F;
+        const byte END_MARKER   = 0x55;
+        const byte STREAM_ENDED = 0xAA; // not written, but signals that we got to the end of the data being read.
 
         const int EMPTY_OFFSET = -1; // any pointer that is not set
 
@@ -355,7 +356,6 @@ namespace StreamDb.Internal.DbStructure
             using (var w = new BinaryWriter(stream, Encoding.UTF8, true))
             {
                 w.Write(START_MARKER);
-                w.Write(_nodes.Count);
 
                 for (var i = 0; i < _nodes.Count; i++)
                 {
@@ -413,14 +413,21 @@ namespace StreamDb.Internal.DbStructure
                 // When reading, with flip them back to forwards links for querying
 
                 if (r.ReadByte() != START_MARKER) throw new Exception("Input stream missing start marker");
-                var nodeCount = r.ReadInt32();
-                if (nodeCount < 0) throw new Exception("Input stream node count invalid");
                 
                 // we could get index nodes or data entries in any order
-                while (true) {
-                    var tag = r.ReadByte();
+                while (true)
+                {
+                    var tag = TryReadTag(r);
                     switch (tag) {
                         case END_MARKER:
+                            // Thought: maybe allow multiple of these, so we can recover bad concatenation?
+                            //          In which case, an end-marker is more like a 'commit'.
+                            break;
+                        case START_MARKER:
+                            // This should only happen after an 'END_MARKER'
+                            break;
+                        case STREAM_ENDED:
+                            // if we are doing 'commits', this would abandon any data not yet comitted.
                             return;
                         case INDEX_MARKER:
                             {
@@ -449,9 +456,21 @@ namespace StreamDb.Internal.DbStructure
                             }
                             break;
                         default:
-                            throw new Exception($"PathIndex.OverwriteFromStream: Invalid serialisation structure ({tag})");
+                            throw new Exception($"PathIndex.OverwriteFromStream: Invalid serialisation structure ({tag:X})");
                     }
                 }
+            }
+        }
+
+        private static byte TryReadTag([NotNull]BinaryReader r)
+        {
+            if (r.BaseStream == null) return STREAM_ENDED;
+            if (r.BaseStream.Position == r.BaseStream.Length) return STREAM_ENDED;
+
+            try {
+                return r.ReadByte();
+            } catch {
+                return STREAM_ENDED;
             }
         }
 
