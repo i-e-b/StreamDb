@@ -4,14 +4,16 @@ using JetBrains.Annotations;
 
 namespace StreamDb.Internal.Support
 {
-    public class MonotonicByte : PartiallyOrdered, IStreamSerialisable {
+    public struct MonotonicByte :  IStreamSerialisable {
 
-        private byte _value = 0;
+        private byte _value;
 
         public int Value { get { return _value; } }
 
+        /*
         /// <summary> Start a new counter on zero </summary>
         public MonotonicByte() { }
+        */
 
         /// <summary> Start a new counter with a given value </summary>
         public MonotonicByte(int value) { unchecked { _value = (byte)value; } }
@@ -25,17 +27,33 @@ namespace StreamDb.Internal.Support
         }
 
         /// <inheritdoc />
-        public Stream ToBytes() {
+        public Stream Freeze() {
             return new MemoryStream(new[] { _value });
         }
 
         /// <inheritdoc />
-        public void FromBytes(Stream source) {
+        public void Defrost(Stream source) {
             if (source == null || source.Length < 1) throw new Exception("Invalid source");
             _value = (byte)source.ReadByte();
         }
+#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
+        public static int CompareTo(MonotonicByte x, object y) { if (ReferenceEquals(x, null)) { return ReferenceEquals(y, null) ? 0 : -1; } return x.CompareTo(y); }
+        public static bool operator  < (MonotonicByte x, MonotonicByte y) { return CompareTo(x, y)  < 0; }
+        public static bool operator  > (MonotonicByte x, MonotonicByte y) { return CompareTo(x, y)  > 0; }
+        public static bool operator <= (MonotonicByte x, MonotonicByte y) { return CompareTo(x, y) <= 0; }
+        public static bool operator >= (MonotonicByte x, MonotonicByte y) { return CompareTo(x, y) >= 0; }
+        public static bool operator == (MonotonicByte x, MonotonicByte y) { return CompareTo(x, y) == 0; }
+        public static bool operator != (MonotonicByte x, MonotonicByte y) { return CompareTo(x, y) != 0; }
+        public bool Equals(MonotonicByte x)    { return CompareTo(this, x) == 0; }
+#pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
 
-        public override int CompareTo(object obj)
+        /// <inheritdoc />
+        public override bool Equals(object obj)
+        {
+            return (obj is PartiallyOrdered ordered) && (CompareTo(this, ordered) == 0);
+        }
+
+        public int CompareTo(object obj)
         {
             if (ReferenceEquals(this, obj)) return 0;
             if (ReferenceEquals(null, obj)) return 1;

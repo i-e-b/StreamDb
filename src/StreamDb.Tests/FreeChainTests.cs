@@ -115,9 +115,9 @@ namespace StreamDb.Tests
                 original.TryAdd(i);
             }
 
-            var bytes = original.ToBytes();
+            var bytes = original.Freeze();
             var result = new FreeListPage();
-            result.FromBytes(bytes);
+            result.Defrost(bytes);
 
             for (i = 0; i < 100; i++)
             {

@@ -109,7 +109,7 @@ namespace StreamDb.Internal.Support
         }
 
         /// <inheritdoc />
-        public Stream ToBytes()
+        public Stream Freeze()
         {
             var ms = new MemoryStream(ByteSize);
             var w = new BinaryWriter(ms);
@@ -121,7 +121,7 @@ namespace StreamDb.Internal.Support
         }
 
         /// <inheritdoc />
-        public void FromBytes(Stream source)
+        public void Defrost(Stream source)
         {
             if (source == null || source.Length < ByteSize) throw new Exception("VersionedLink.FromBytes: data was too short.");
             var r = new BinaryReader(source);

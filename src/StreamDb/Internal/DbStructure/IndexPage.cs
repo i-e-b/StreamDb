@@ -157,7 +157,7 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public void FromBytes(Stream source)
+        public void Defrost(Stream source)
         {
             if (source == null || source.Length < PackedSize) throw new Exception("IndexPage.FromBytes: data was too short.");
             var r = new BinaryReader(source);
@@ -169,12 +169,12 @@ namespace StreamDb.Internal.DbStructure
                 _docIds[i] = new Guid(bytes);
 
 
-                _links[i].FromBytes(r.BaseStream);
+                _links[i].Defrost(r.BaseStream);
             }
         }
 
         /// <inheritdoc />
-        public Stream ToBytes()
+        public Stream Freeze()
         {
             var ms = new MemoryStream(PackedSize);
             var w = new BinaryWriter(ms);
@@ -182,7 +182,7 @@ namespace StreamDb.Internal.DbStructure
             for (int i = 0; i < EntryCount; i++)
             {
                 w.Write(_docIds[i].ToByteArray());
-                _links[i].ToBytes().CopyTo(ms);
+                _links[i].Freeze().CopyTo(ms);
             }
 
             ms.Seek(0, SeekOrigin.Begin);

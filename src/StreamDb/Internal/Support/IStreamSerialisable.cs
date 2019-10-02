@@ -9,13 +9,13 @@ namespace StreamDb.Internal.Support
     public interface IStreamSerialisable
     {
         /// <summary>
-        /// Convert this instance to a byte array
+        /// Convert this instance to a byte stream
         /// </summary>
-        [NotNull]Stream ToBytes();
+        [NotNull]Stream Freeze();
 
         /// <summary>
-        /// Populate from a byte array
+        /// Populate from a byte stream source
         /// </summary>
-        void FromBytes(Stream source);
+        void Defrost(Stream source);
     }
 }

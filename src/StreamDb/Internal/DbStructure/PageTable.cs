@@ -112,10 +112,10 @@ namespace StreamDb.Internal.DbStructure
             try {
                 w.Seek(0, SeekOrigin.Begin);
 
-                root.ToBytes().CopyTo(w.BaseStream);
-                index.ToBytes().CopyTo(w.BaseStream);
-                free.ToBytes().CopyTo(w.BaseStream);
-                path.ToBytes().CopyTo(w.BaseStream);
+                root.Freeze().CopyTo(w.BaseStream);
+                index.Freeze().CopyTo(w.BaseStream);
+                free.Freeze().CopyTo(w.BaseStream);
+                path.Freeze().CopyTo(w.BaseStream);
             }
             finally 
             {
@@ -136,7 +136,7 @@ namespace StreamDb.Internal.DbStructure
                 Dirty = true,
                 FirstPageId = 3
             };
-            var bytes = path0.ToBytes();
+            var bytes = path0.Freeze();
             
             page.Write(bytes, 0, 0, bytes.Length);
             page.UpdateCRC();
@@ -155,7 +155,7 @@ namespace StreamDb.Internal.DbStructure
                 Dirty = true,
                 FirstPageId = 2
             };
-            var bytes = free0.ToBytes();
+            var bytes = free0.Freeze();
             page.Write(bytes, 0, 0, bytes.Length);
             page.UpdateCRC();
             return page;
@@ -173,7 +173,7 @@ namespace StreamDb.Internal.DbStructure
                 Dirty = true,
                 FirstPageId = 1
             };
-            var indexBytes = index0.ToBytes();
+            var indexBytes = index0.Freeze();
             index.Write(indexBytes, 0, 0, indexBytes.Length);
             index.UpdateCRC();
             return index;
@@ -191,7 +191,7 @@ namespace StreamDb.Internal.DbStructure
                 Dirty = true,
                 FirstPageId = 0
             };
-            var rootBytes = root0.ToBytes();
+            var rootBytes = root0.Freeze();
             root.Write(rootBytes, 0, 0, rootBytes.Length);
             root.UpdateCRC();
             return root;
@@ -233,7 +233,7 @@ namespace StreamDb.Internal.DbStructure
                 reader.BaseStream.Seek(byteOffset, SeekOrigin.Begin);
                 
                 var result = new Page();
-                result.FromBytes(new Substream(reader.BaseStream, Page.PageRawSize));
+                result.Defrost(new Substream(reader.BaseStream, Page.PageRawSize));
                 result.OriginalPageId = pageId;
                 if (!result.ValidateCrc()) throw new Exception($"CRC failed at page {pageId}");
                 return result;
@@ -250,7 +250,7 @@ namespace StreamDb.Internal.DbStructure
             if (!page.ValidateCrc()) throw new Exception("PageTable.ReadRoot: Root entry failed CRC check. Must recover database.");
 
             var final = new RootPage();
-            final.FromBytes(page.GetDataStream());
+            final.Defrost(page.GetDataStream());
             _rootPageCache = final;
             return final;
         }
@@ -384,7 +384,7 @@ namespace StreamDb.Internal.DbStructure
             }
     
             // end of chain. Extend it.
-            var newPage = ChainPage(freeLink, new FreeListPage().ToBytes(), -1);
+            var newPage = ChainPage(freeLink, new FreeListPage().Freeze(), -1);
             return Page<FreeListPage>.FromRaw(newPage);
         }
 
@@ -480,7 +480,7 @@ namespace StreamDb.Internal.DbStructure
         private void CommitPage([NotNull]Page page, [NotNull]BinaryWriter w)
         {
             w.Seek(page.OriginalPageId * Page.PageRawSize, SeekOrigin.Begin);
-            page.ToBytes().CopyTo(w.BaseStream);
+            page.Freeze().CopyTo(w.BaseStream);
             page.Dirty = false;
         }
 
@@ -551,7 +551,7 @@ namespace StreamDb.Internal.DbStructure
     
             // end of chain. Extend it?
             if (!shouldAdd) return null;
-            var newPage = ChainPage(indexLink, new IndexPage().ToBytes(), -1);
+            var newPage = ChainPage(indexLink, new IndexPage().Freeze(), -1);
             return Page<IndexPage>.FromRaw(newPage);
         }
 
@@ -679,7 +679,7 @@ namespace StreamDb.Internal.DbStructure
             // 2. Figure out how long the current stored data is
             // 3. Append only the new data (continue in the last page)
 
-            using (var newPathData = _pathIndexCache.ToBytes())
+            using (var newPathData = _pathIndexCache.Freeze())
             {
                 var raw = GetPageRaw(ReadRoot().GetPathLookupBase());
                 if (raw == null) throw new Exception("Path lookup pages lost");

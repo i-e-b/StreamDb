@@ -9,13 +9,13 @@ namespace StreamDb.Internal.Support
         public static ByteString Wrap(string str) { return new ByteString{_str = str }; }
 
         /// <inheritdoc />
-        public Stream ToBytes() {
+        public Stream Freeze() {
             if (_str == null) return new MemoryStream(0);
             return new MemoryStream(Encoding.UTF8?.GetBytes(_str));
         }
 
         /// <inheritdoc />
-        public void FromBytes(Stream source) {
+        public void Defrost(Stream source) {
             if (source == null) return;
             var bytes = new byte[source.RemainingLength()];
             source.Read(bytes, 0, source.RemainingLength());

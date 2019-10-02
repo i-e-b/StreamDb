@@ -125,7 +125,7 @@ namespace StreamDb.Tests
             source.Add("my/other/path/longer", "value4");
 
         
-            var bytes = source.ToBytes();
+            var bytes = source.Freeze();
 
             bytes.Seek(0, SeekOrigin.Begin);
 
@@ -133,7 +133,7 @@ namespace StreamDb.Tests
 
             var result = new PathIndex<ByteString>();
             bytes.Seek(0, SeekOrigin.Begin);
-            result.FromBytes(bytes);
+            result.Defrost(bytes);
 
 
             Assert.That((string)result.Get("my/path/1"), Is.EqualTo("value1"));
@@ -214,7 +214,7 @@ namespace StreamDb.Tests
             source.Add("my/other/path/longer", "value4");
 
             // get originals
-            var bytes1 = source.ToBytes();
+            var bytes1 = source.Freeze();
             Console.WriteLine($"First len = {bytes1.Length}");
 
             source.Add("my/path/3", "value5");
@@ -223,7 +223,7 @@ namespace StreamDb.Tests
             source.Add("my/other/path/longer-still", "PPPPPPPPP"); // F0090000005050505050...
 
             // get extended
-            var bytes2 = source.ToBytes();
+            var bytes2 = source.Freeze();
             Console.WriteLine($"Second len = {bytes2.Length}");
             Assert.That(bytes2.Length, Is.GreaterThan(bytes1.Length), "Adding entries did not change the serialised size");
 
@@ -247,7 +247,7 @@ namespace StreamDb.Tests
             Console.WriteLine($"Expected {bytes2.Length + 1}, got {concat.Length}");
 
             var result = new PathIndex<ByteString>();
-            result.FromBytes(concat);
+            result.Defrost(concat);
 
             // TODO: errors here are probably bugs in `Substream`
 

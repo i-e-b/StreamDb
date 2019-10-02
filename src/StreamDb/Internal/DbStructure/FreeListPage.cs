@@ -72,7 +72,7 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public Stream ToBytes()
+        public Stream Freeze()
         {
             var ms = new MemoryStream(Capacity * sizeof(int));
             var w = new BinaryWriter(ms);
@@ -85,7 +85,7 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public void FromBytes(Stream source)
+        public void Defrost(Stream source)
         {
             if (source == null) return;
             var r = new BinaryReader(source);

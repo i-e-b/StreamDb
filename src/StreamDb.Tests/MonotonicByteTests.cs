@@ -42,9 +42,9 @@ namespace StreamDb.Tests
         public void can_be_serialised_correctly()
         {
             var source = new MonotonicByte(140);
-            var bytes = source.ToBytes();
+            var bytes = source.Freeze();
             var dest = new MonotonicByte();
-            dest.FromBytes(bytes);
+            dest.Defrost(bytes);
 
             Assert.That(source == dest, Is.True);
         }

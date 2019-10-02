@@ -12,7 +12,7 @@ namespace StreamDb.Internal.Support
         /// <summary>
         /// Version of this link. Always use the latest link whose page has a valid CRC
         /// </summary>
-        [NotNull]public MonotonicByte Version { get; set; }
+        public MonotonicByte Version { get; set; }
 
         /// <summary>
         /// End of the page chain (for writing).
@@ -20,7 +20,7 @@ namespace StreamDb.Internal.Support
         /// </summary>
         public int PageId { get; set; }
 
-        public PageLink() { Version= new MonotonicByte(); }
+        public PageLink() { Version = new MonotonicByte(); }
 
         /// <summary>
         /// Return a link that is disabled

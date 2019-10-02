@@ -23,14 +23,14 @@ namespace StreamDb.Internal.DbStructure
         /// <param name="bytes">page data</param>
         public Page(int pageId, Stream bytes)
         {
-            FromBytes(bytes);
+            Defrost(bytes);
 
             if (!ValidateCrc()) throw new Exception("Page<T>.ctor: CRC failed");
 
             OriginalPageId = pageId;
 
             var v = new T();
-            v.FromBytes(GetDataStream());
+            v.Defrost(GetDataStream());
             View = v;
         }
 
@@ -47,7 +47,7 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         public void SyncView()
         {
-            var bytes = View.ToBytes();
+            var bytes = View.Freeze();
             Write(bytes, 0, 0, bytes.Length);
             UpdateCRC();
         }
@@ -213,10 +213,10 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public Stream ToBytes() { return new MemoryStream(_data); }
+        public Stream Freeze() { return new MemoryStream(_data); }
 
         /// <inheritdoc />
-        public void FromBytes(Stream source)
+        public void Defrost(Stream source)
         {
             if (source == null) throw new Exception("Page source was null");
             if (source.Length != PageRawSize) throw new Exception($"Page source was not the correct size. Expected {PageRawSize}, got {source.Length}");

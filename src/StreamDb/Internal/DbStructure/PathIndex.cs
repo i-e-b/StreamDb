@@ -514,7 +514,7 @@ namespace StreamDb.Internal.DbStructure
             if (length <= 0) return default;
             
             var value = new T();
-            value.FromBytes(new Substream(r.BaseStream, length));
+            value.Defrost(new Substream(r.BaseStream, length));
             return value;
         }
 
@@ -522,13 +522,13 @@ namespace StreamDb.Internal.DbStructure
         {
             if (data == null) { w.Write(EMPTY_OFFSET); return; }
 
-            var bytes = data.ToBytes();
+            var bytes = data.Freeze();
             w.Write((int)bytes.Length);
             bytes.CopyTo(w.BaseStream);
         }
 
         /// <inheritdoc />
-        public Stream ToBytes()
+        public Stream Freeze()
         {
             var ms = new MemoryStream();
             WriteTo(ms);
@@ -537,7 +537,7 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <inheritdoc />
-        public void FromBytes(Stream source)
+        public void Defrost(Stream source)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             OverwriteFromStream(source, this);
