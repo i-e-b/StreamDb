@@ -51,7 +51,9 @@ namespace StreamDb
             return new Database(storage);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Flush, close and dispose of the underlying stream.
+        /// </summary>
         public void Dispose() { _fs.Flush(); _fs.Dispose(); }
 
         /// <summary>

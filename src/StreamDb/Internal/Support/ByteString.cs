@@ -3,7 +3,7 @@ using System.Text;
 
 namespace StreamDb.Internal.Support
 {
-    public class ByteString : IStreamSerialisable {
+    public class ByteString : PartiallyOrdered, IStreamSerialisable {
         private string _str;
 
         public static ByteString Wrap(string str) { return new ByteString{_str = str }; }
@@ -25,5 +25,18 @@ namespace StreamDb.Internal.Support
         public static implicit operator ByteString(string other){ return Wrap(other); }
         public static explicit operator string(ByteString other){ return other?._str; }
         public override string ToString() { return _str ?? ""; }
+
+        /// <inheritdoc />
+        public override int CompareTo(object obj)
+        {
+            return _str?.CompareTo(obj?.ToString() ?? "") ?? -1;
+        }
+
+        /// <inheritdoc />
+        public override int GetHashCode()
+        {
+            // ReSharper disable once NonReadonlyMemberInGetHashCode
+            return _str?.GetHashCode() ?? 0;
+        }
     }
 }

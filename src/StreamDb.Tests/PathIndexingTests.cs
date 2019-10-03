@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using NUnit.Framework;
 using StreamDb.Internal.DbStructure;
 using StreamDb.Internal.Support;
@@ -232,24 +234,18 @@ namespace StreamDb.Tests
             //Console.WriteLine(bytes2.ToHexString());
 
             // make a new one with only the added bytes
-
             var concat = new MemoryStream();
+
             bytes1.Seek(0, SeekOrigin.Begin);
             bytes1.CopyTo(concat);
-            Console.WriteLine("part 1 = " + concat.Position);
 
             bytes2.Seek(bytes1.Length - 1, SeekOrigin.Begin);
             bytes2.CopyTo(concat);
-            Console.WriteLine("part 2 = " + concat.Position);
-            concat.Seek(0, SeekOrigin.Begin);
 
-
-            Console.WriteLine($"Expected {bytes2.Length + 1}, got {concat.Length}");
 
             var result = new PathIndex<ByteString>();
+            concat.Seek(0, SeekOrigin.Begin);
             result.Defrost(concat);
-
-            // TODO: errors here are probably bugs in `Substream`
 
             Assert.That((string)result.Get("my/path/1"), Is.EqualTo("value1"));
             Assert.That((string)result.Get("my/path/2"), Is.EqualTo("value2"));
@@ -262,14 +258,46 @@ namespace StreamDb.Tests
         }
 
         [Test]
+        public void can_lookup_populated_paths_given_a_prefix () {
+            var source = new PathIndex<ByteString>();
+
+            source.Add("what/path/1", "value1");
+            source.Add("my/path/1", "value1");
+            source.Add("my/path/2", "value2");
+            source.Add("my/other/path", "value3");
+            source.Add("my/path/3", "value4");
+
+            Console.WriteLine(source.DiagnosticString());
+
+            var result = string.Join(", ", source.Search("my/path"));
+            Assert.That(result, Is.EqualTo("my/path/1, my/path/2, my/path/3"));
+            
+            result = string.Join(", ", source.Search("what"));
+            Assert.That(result, Is.EqualTo("what/path/1"));
+        }
+
+        [Test]
         public void can_look_up_paths_by_value () {
             // you can assign the same value to multiple paths
             // this could be quite useful, but I'd like to be able to
             // reverse the process -- see what paths an objects is bound
             // to. Could be a simple set of scans (slow) or a restructuring
             // of the internal data.
+            
+            var source = new PathIndex<ByteString>();
 
-            Assert.Inconclusive("Not yet implemented");
+            source.Add("very different", "value0");
+            source.Add("my/path/1", "value1");
+            source.Add("my/path/2", "value2");
+            source.Add("b - very different", "value0");
+            source.Add("my/other/path", "value3");
+            source.Add("my/other/path/longer", "value4");
+            source.Add("another/path/for/3", "value3");
+            source.Add("z - very different", "value0");
+
+            var result = string.Join(", ", source.GetPathsForEntry("value3"));
+
+            Assert.That(result, Is.EqualTo("my/other/path, another/path/for/3"));
         }
     }
 }

@@ -16,7 +16,7 @@ namespace StreamDb.Internal.DbStructure
     /// The result of path index is stored as a special document in the database, and used
     /// to look up files by path.
     /// </remarks>
-    public class PathIndex<T>: IStreamSerialisable where T : IStreamSerialisable, new()
+    public class PathIndex<T>: IStreamSerialisable where T : PartiallyOrdered, IStreamSerialisable, new()
     {
         // Serialisation tags:
         const byte START_MARKER = 0xFF;
@@ -34,6 +34,7 @@ namespace StreamDb.Internal.DbStructure
             public char Ch; // the path character at this step
             public int Left, Match, Right; // Indexes into the node array
             public int DataIdx; // Index into entries array. If -1, this is not a path endpoint
+            public BackLink Backlink; // reverse link, used to recover a path from an arbitrary node
             public Node() { Left = Match = Right = DataIdx = EMPTY_OFFSET; }
         }
         
@@ -53,6 +54,7 @@ namespace StreamDb.Internal.DbStructure
             /// <remarks> This is not serialised. We use it for sorting, and is restored implicitly when deserialising. </remarks>
             public int NodePosition;
             /// <summary> Original position </summary>
+            /// <remarks> This is not serialised. We use it for sorting, and is restored implicitly when deserialising. </remarks>
             public int EntryOrder;
         }
         
@@ -133,30 +135,98 @@ namespace StreamDb.Internal.DbStructure
             var result = new List<string>();
 
             // now recurse down the tree and list out all possibilities
-            var start = prefix.Substring(0, prefix.Length - 1);
-            RecurseIntoList(start, nodeIdx, result);
+            RecurseIntoList(nodeIdx, result);
 
             return result;
         }
 
-        private void RecurseIntoList(string prefix, int nodeIdx, [NotNull]List<string> result)
+
+        /// <summary>
+        /// Scan the index, return all paths that match the given value.
+        /// Comparison is done by the the comparison method of the value's type.
+        /// If no matches are found, the enumeration will be empty.
+        /// </summary>
+        /// <param name="value">A stored value to search</param>
+        /// <returns>All matching paths</returns>
+        [NotNull, ItemNotNull]
+        public IEnumerable<string> GetPathsForEntry(T value)
+        {
+            if (value == null) yield break;
+
+            // Plan:
+            // 1. serialise the value
+            // 2. scan the entries table, get any indexes where data matches (look at length, then check bytes)
+            // 3. scan the node table for the indexes found above and yield.
+
+            for (var dataIdx = 0; dataIdx < _entries.Count; dataIdx++)
+            {
+                var entry = _entries[dataIdx];
+                if (entry.Data != value) continue;
+
+                // found a match. Now scan the nodes table:
+                for (var nodeIdx = 0; nodeIdx < _nodes.Count; nodeIdx++)
+                {
+                    var node = _nodes[nodeIdx];
+                    if (node.DataIdx != dataIdx) continue;
+
+                    // Found a matching path. Now reconstruct it
+                    yield return PathToNode(nodeIdx);
+                }
+            }
+        }
+
+        /// <summary>
+        /// recover a path from a node
+        /// </summary>
+        [NotNull]private string PathToNode(int nodeIdx)
+        {
+            // starting from the node, we work backward then build a string forward
+            // this relies on the backlinks.
+
+            var node = _nodes[nodeIdx];
+            var stack = new Stack<char>();
+
+            stack.Push(node.Ch);
+
+            while (node.Backlink.Type != BackLinkType.None) {
+                var lastIdx = node.Backlink.Position;
+                var type = node.Backlink.Type;
+                node = _nodes[node.Backlink.Position];
+                if (node.Backlink.Position < 0) break;
+
+                if (type == BackLinkType.Match)
+                {
+                    stack.Push(node.Ch);
+                }
+
+                if (lastIdx == 0) break;
+            }
+
+            // flip the string over
+            var sb = new StringBuilder();
+            while (stack.Count > 0) sb.Append(stack.Pop());
+            return sb.ToString();
+        }
+
+        private void RecurseIntoList(int nodeIdx, [NotNull]List<string> result)
         {
             if (nodeIdx < 0 || nodeIdx >= _nodes.Count) return;
 
             var node = _nodes[nodeIdx];
 
-            if (node.DataIdx >= 0) result.Add(prefix + node.Ch);
+            //if (node.DataIdx >= 0) result.Add(prefix + node.Ch);
+            if (node.DataIdx >= 0) result.Add(PathToNode(nodeIdx));
 
             if (node.Match >= 0) {
-                RecurseIntoList(prefix + node.Ch, node.Match, result);
+                RecurseIntoList(node.Match, result);
             }
 
             if (node.Left >= 0) {
-                RecurseIntoList(prefix, node.Left, result);
+                RecurseIntoList(node.Left, result);
             }
 
             if (node.Right >= 0) {
-                RecurseIntoList(prefix, node.Right, result);
+                RecurseIntoList(node.Right, result);
             }
         }
 
@@ -203,21 +273,22 @@ namespace StreamDb.Internal.DbStructure
 
         private int BuildStep(int idx, char ch, bool isLast, ref int matchIncr)
         {
-            if (_nodes.Count < 1) { return NewIndexNode(ch); } // empty
+            if (_nodes.Count < 1) { return NewIndexNode(ch, 0, BackLinkType.None); } // empty
 
             var inspect = _nodes[idx];
 
             if (inspect.Ch == 0) { // empty match. Fill it in
                 inspect.Ch = ch;
+                inspect.Backlink.Type = BackLinkType.Match;
                 if (inspect.Match > EMPTY_OFFSET) throw new Exception("invalid match structure");
-                if (!isLast) inspect.Match = NewEmptyIndex(); // next empty match ready for the rest of the string (only if there is more string)
+                if (!isLast) inspect.Match = NewEmptyIndex(idx); // next empty match ready for the rest of the string (only if there is more string)
                 return idx;
             }
 
             if (inspect.Ch == ch)
             {
                 matchIncr++;
-                if (inspect.Match < 0 && !isLast) { inspect.Match = NewEmptyIndex(); }
+                if (inspect.Match < 0 && !isLast) { inspect.Match = NewEmptyIndex(idx); }
                 return inspect.Match;
             }
 
@@ -227,30 +298,44 @@ namespace StreamDb.Internal.DbStructure
                 if (inspect.Left >= 0) return inspect.Left;
 
                 // add new node for this value, increment match
-                inspect.Left = NewIndexNode(ch);
-                if (!isLast) _nodes[inspect.Left].Match = NewEmptyIndex();
+                inspect.Left = NewIndexNode(ch, idx, BackLinkType.Left);
+                if (!isLast) _nodes[inspect.Left].Match = NewEmptyIndex(inspect.Left);
                 return inspect.Left;
             }
 
             // switch right
             if (inspect.Right >= 0) return inspect.Right;
             // add new node for this value, increment match
-            inspect.Right = NewIndexNode(ch);
-            if (!isLast) _nodes[inspect.Right].Match = NewEmptyIndex();
+            inspect.Right = NewIndexNode(ch, idx, BackLinkType.Right);
+            if (!isLast) _nodes[inspect.Right].Match = NewEmptyIndex(inspect.Right);
             return inspect.Right;
         }
 
-        private int NewIndexNode(char ch)
+        private int NewIndexNode(char ch, int parentIdx, BackLinkType branchType)
         {
-            var node = new Node {Ch = ch};
+            var node = new Node {
+                Ch = ch,
+                Backlink = new BackLink {
+                    Position = parentIdx,
+                    Type = branchType
+                }
+            };
             var idx = _nodes.Count;
             _nodes.Add(node);
             return idx;
         }
 
-        private int NewEmptyIndex()
+        private int NewEmptyIndex(int parentIdx)
         {
-            var node = new Node {Ch = (char) 0};
+            var node = new Node
+            {
+                Ch = (char)0,
+                Backlink = new BackLink
+                {
+                    Position = parentIdx,
+                    Type = BackLinkType.Match
+                }
+            };
             var idx = _nodes.Count;
             _nodes.Add(node);
             return idx;
@@ -299,6 +384,10 @@ namespace StreamDb.Internal.DbStructure
                 sb.Append(node.Match);
                 sb.Append(", R=");
                 sb.Append(node.Right);
+                sb.Append(", ");
+                sb.Append(node.Backlink.Position);
+                sb.Append("<- ");
+                sb.Append(node.Backlink.Type);
                 sb.AppendLine("];");
                 i++;
             }
@@ -310,7 +399,7 @@ namespace StreamDb.Internal.DbStructure
                 sb.Append("    ");
                 sb.Append(i);
                 sb.Append("[");
-                sb.Append(entry);
+                sb.Append(entry.Data);
                 sb.AppendLine("];");
                 i++;
             }
@@ -435,15 +524,15 @@ namespace StreamDb.Internal.DbStructure
                             {
                                 var node = new Node {
                                     Ch = r.ReadChar(),
-                                    DataIdx = r.ReadInt32()
-                                };
-                                var backLink = new BackLink{
-                                    Type = (BackLinkType)r.ReadByte(),
-                                    Position = r.ReadInt32()
+                                    DataIdx = r.ReadInt32(),
+                                    Backlink = new BackLink{
+                                        Type = (BackLinkType)r.ReadByte(),
+                                        Position = r.ReadInt32()
+                                    }
                                 };
                                 
                                 result._nodes.Add(node);
-                                StitchLink(result, backLink, result._nodes.Count - 1);
+                                StitchLink(result, node.Backlink, result._nodes.Count - 1);
                             }
                             break;
                         case DATA_MARKER:

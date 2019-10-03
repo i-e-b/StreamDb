@@ -8,12 +8,12 @@ namespace TracingApp
     class Program
     {
         // For memory tracing:
-        const int OVERWRITE_COUNT = 2;
-        const int DOCUMENT_COUNT = 15;
+        //const int OVERWRITE_COUNT = 2;
+        //const int DOCUMENT_COUNT = 15;
 
         // For call/performance tracing:
-        //const int OVERWRITE_COUNT = 10;
-        //const int DOCUMENT_COUNT = 100;
+        const int OVERWRITE_COUNT = 10;
+        const int DOCUMENT_COUNT = 100;
 
 
         static void Main()
