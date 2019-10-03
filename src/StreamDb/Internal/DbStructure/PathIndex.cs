@@ -50,6 +50,8 @@ namespace StreamDb.Internal.DbStructure
         private class Entry {
             /// <summary> The data of this entry. This is serialised. </summary>
             public T Data;
+            /// <summary> The index in the `nodes` array that links to this entry. Used for searchin. This is serialised. </summary>
+            public int NodeIndex;
             /// <summary> The length of the `nodes` array when this entry was added </summary>
             /// <remarks> This is not serialised. We use it for sorting, and is restored implicitly when deserialising. </remarks>
             public int NodePosition;
@@ -153,25 +155,13 @@ namespace StreamDb.Internal.DbStructure
         {
             if (value == null) yield break;
 
-            // Plan:
-            // 1. serialise the value
-            // 2. scan the entries table, get any indexes where data matches (look at length, then check bytes)
-            // 3. scan the node table for the indexes found above and yield.
-
-            for (var dataIdx = 0; dataIdx < _entries.Count; dataIdx++)
+            foreach (var entry in _entries)
             {
-                var entry = _entries[dataIdx];
                 if (entry.Data != value) continue;
+                if (entry.NodeIndex < 0) continue;
 
-                // found a match. Now scan the nodes table:
-                for (var nodeIdx = 0; nodeIdx < _nodes.Count; nodeIdx++)
-                {
-                    var node = _nodes[nodeIdx];
-                    if (node.DataIdx != dataIdx) continue;
-
-                    // Found a matching path. Now reconstruct it
-                    yield return PathToNode(nodeIdx);
-                }
+                // Now reconstruct matching path
+                yield return PathToNode(entry.NodeIndex);
             }
         }
 
@@ -350,7 +340,8 @@ namespace StreamDb.Internal.DbStructure
             var entry = new Entry{
                 Data = value,
                 EntryOrder = newIdx,
-                NodePosition = _nodes.Count
+                NodePosition = _nodes.Count,
+                NodeIndex = nodeIdx
             };
             _entries.Add(entry);
 
@@ -452,7 +443,7 @@ namespace StreamDb.Internal.DbStructure
                                                             && sortedEntries[dataIndex].NodePosition <= i) {
                         
                         w.Write(DATA_MARKER);
-                        WriteDataEntry(sortedEntries[dataIndex].Data, w);
+                        WriteDataEntry(sortedEntries[dataIndex], w);
                         dataIndex++;
                     }
 
@@ -485,7 +476,7 @@ namespace StreamDb.Internal.DbStructure
                 while (dataIndex < sortedEntries.Length && sortedEntries[dataIndex] != null)
                 {
                     w.Write(DATA_MARKER);
-                    WriteDataEntry(sortedEntries[dataIndex].Data, w);
+                    WriteDataEntry(sortedEntries[dataIndex], w);
                     dataIndex++;
                 }
 
@@ -537,11 +528,14 @@ namespace StreamDb.Internal.DbStructure
                             break;
                         case DATA_MARKER:
                             {
+                                var data = ReadDataEntry(r, out var nodeIdx);
                                 var entry = new Entry
                                 {
-                                    Data = ReadDataEntry(r),
+                                    Data = data,
+                                    NodeIndex = nodeIdx,
                                     NodePosition = result._nodes.Count,
-                                    EntryOrder = result._entries.Count
+                                    EntryOrder = result._entries.Count,
+                                    // TODO: how do we link back to our node index? Rescan after?
                                 };
                                 result._entries.Add(entry);
                             }
@@ -597,9 +591,10 @@ namespace StreamDb.Internal.DbStructure
             }
         }
 
-        private static T ReadDataEntry([NotNull]BinaryReader r)
+        private static T ReadDataEntry([NotNull]BinaryReader r, out int nodeIdx)
         {
             var length = r.ReadInt32();
+            nodeIdx = (length < 0) ? -1 : r.ReadInt32();
             if (length <= 0) return default;
             
             var value = new T();
@@ -607,12 +602,13 @@ namespace StreamDb.Internal.DbStructure
             return value;
         }
 
-        private void WriteDataEntry(T data, [NotNull]BinaryWriter w)
+        private void WriteDataEntry(Entry entry, [NotNull]BinaryWriter w)
         {
-            if (data == null) { w.Write(EMPTY_OFFSET); return; }
+            if (entry?.Data == null) { w.Write(EMPTY_OFFSET); return; }
 
-            var bytes = data.Freeze();
+            var bytes = entry.Data.Freeze();
             w.Write((int)bytes.Length);
+            w.Write(entry.NodeIndex);
             bytes.CopyTo(w.BaseStream);
         }
 

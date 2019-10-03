@@ -277,7 +277,7 @@ namespace StreamDb.Tests
         }
 
         [Test]
-        public void can_look_up_paths_by_value () {
+        public void can_look_up_paths_by_value_in_live_data () {
             // you can assign the same value to multiple paths
             // this could be quite useful, but I'd like to be able to
             // reverse the process -- see what paths an objects is bound
@@ -296,6 +296,35 @@ namespace StreamDb.Tests
             source.Add("z - very different", "value0");
 
             var result = string.Join(", ", source.GetPathsForEntry("value3"));
+
+            Assert.That(result, Is.EqualTo("my/other/path, another/path/for/3"));
+        }
+
+        [Test]
+        public void can_look_up_paths_by_value_from_serialised_data () {
+            // you can assign the same value to multiple paths
+            // this could be quite useful, but I'd like to be able to
+            // reverse the process -- see what paths an objects is bound
+            // to. Could be a simple set of scans (slow) or a restructuring
+            // of the internal data.
+            
+            var source = new PathIndex<ByteString>();
+
+            source.Add("very different", "value0");
+            source.Add("my/path/1", "value1");
+            source.Add("my/path/2", "value2");
+            source.Add("b - very different", "value0");
+            source.Add("my/other/path", "value3");
+            source.Add("my/other/path/longer", "value4");
+            source.Add("another/path/for/3", "value3");
+            source.Add("z - very different", "value0");
+
+            var bytes = source.Freeze();
+            var reconstituted = new PathIndex<ByteString>();
+            bytes.Seek(0, SeekOrigin.Begin);
+            reconstituted.Defrost(bytes);
+
+            var result = string.Join(", ", reconstituted.GetPathsForEntry("value3"));
 
             Assert.That(result, Is.EqualTo("my/other/path, another/path/for/3"));
         }
