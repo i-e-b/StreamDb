@@ -142,6 +142,15 @@ namespace StreamDb.Tests
             }
         }
         
+        [Test]
+        public void lookup_the_paths_for_a_value () {
+            Assert.Fail("NYI");
+        }
+
+        [Test]
+        public void search_for_paths_with_a_path_prefix () {
+            Assert.Fail("NYI");
+        }
         
 
         [Test, Explicit("Slow test")]

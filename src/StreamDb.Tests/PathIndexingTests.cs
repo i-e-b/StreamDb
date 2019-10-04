@@ -50,6 +50,7 @@ namespace StreamDb.Tests
                 subject.WriteTo(ms);
                 Console.WriteLine($"Produced {totalBytes} bytes");
                 Console.WriteLine($"Stored {ms.Length} bytes");
+                Console.WriteLine($"Indexing overhead is {(ms.Length / (float)totalBytes):#.0} times");
             }
 
             Console.WriteLine(subject.DiagnosticString());
