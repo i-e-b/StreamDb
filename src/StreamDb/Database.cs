@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using JetBrains.Annotations;
 using StreamDb.Internal.DbStructure;
@@ -59,7 +60,9 @@ namespace StreamDb
         /// <summary>
         /// Write a document to the given path
         /// </summary>
-        public void WriteDocument(string path, Stream data)
+        /// <param name="path">Path that can be used with `Get` and `Search` operations to recover this document</param>
+        /// <param name="data">Stream containing document data. It will be read from current position to end.</param>
+        public Guid WriteDocument(string path, Stream data)
         {
             var id = _pages.WriteDocument(data);
             if (id == Guid.Empty) throw new Exception("Failed to write document data");
@@ -67,8 +70,10 @@ namespace StreamDb
 
             if (oldId != Guid.Empty && oldId != id) {
                 // replaced an existing document
+                // TODO: check there are no other paths bound
                 _pages.DeleteDocument(oldId);
             }
+            return id;
         }
 
         /// <summary>
@@ -84,6 +89,61 @@ namespace StreamDb
 
             stream = _pages.ReadDocument(id);
             return stream != null;
+        }
+
+        /// <summary>
+        /// Add a new path binding to a document ID.
+        /// If the path is already bound to a document, the old document ID will be returned
+        /// </summary>
+        /// <param name="documentId">ID of an existing document (this is not checked)</param>
+        /// <param name="newPath">path that can be used for `Get` and `Search` operations</param>
+        public Guid BindToPath(Guid documentId, string newPath)
+        {
+            return _pages.BindPathToDocument(newPath, documentId);
+        }
+
+        /// <summary>
+        /// For a given document ID, find all paths that are bound to it.
+        /// </summary>
+        /// <param name="documentId">A document stored in the database</param>
+        /// <returns>Enumeration of paths. This may not be multi-enumerable</returns>
+        [NotNull, ItemNotNull]
+        public IEnumerable<string> ListPaths(Guid documentId)
+        {
+            return _pages.ListPathsForDocument(documentId);
+        }
+
+        /// <summary>
+        /// Delete a document from the database, and unbind all paths to it.
+        /// If the document does not exist, the request will be silently ignored.
+        /// </summary>
+        /// <param name="documentId">Id of the document to delete.</param>
+        public void Delete(Guid documentId)
+        {
+            _pages.DeletePathsForDocument(documentId);
+            _pages.RemoveFromIndex(documentId);
+            _pages.DeleteDocument(documentId);
+        }
+
+        /// <summary>
+        /// Remove a single path binding for a document.
+        /// If the path is not currently bound to that document, the request will be silently ignored
+        /// </summary>
+        /// <param name="documentId">Id of document currently bound to the path</param>
+        /// <param name="path">Path to unbind</param>
+        public void UnbindPath(Guid documentId, string path)
+        {
+            _pages.DeleteSinglePathForDocument(documentId, path);
+        }
+
+        /// <summary>
+        /// Given the start of a path string, returns all matching paths that have a document bound to them
+        /// </summary>
+        /// <param name="pathPrefix">Start of a path string</param>
+        [NotNull, ItemNotNull]
+        public IEnumerable<string> Search(string pathPrefix)
+        {
+            return _pages.SearchPaths(pathPrefix);
         }
     }
 }

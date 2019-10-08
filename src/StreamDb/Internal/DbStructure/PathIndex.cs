@@ -19,11 +19,12 @@ namespace StreamDb.Internal.DbStructure
     public class PathIndex<T>: IStreamSerialisable where T : PartiallyOrdered, IStreamSerialisable, new()
     {
         // Serialisation tags:
-        const byte START_MARKER = 0xFF;
-        const byte INDEX_MARKER = 0xF0;
-        const byte DATA_MARKER  = 0x0F;
-        const byte END_MARKER   = 0x55;
-        const byte STREAM_ENDED = 0xAA; // not written, but signals that we got to the end of the data being read.
+        const byte START_MARKER  = 0xFF; // start of a stream
+        const byte INDEX_MARKER  = 0xF0; // next block is for the nodes table
+        const byte DATA_MARKER   = 0x0F; // next block is for the entries table
+        const byte END_MARKER    = 0x55; // commit data captured so far
+        const byte DELETE_MARKER = 0xC3; // path entry should be removed
+        const byte STREAM_ENDED  = 0xAA; // not written, but signals that we got to the end of the data being read.
 
         const int EMPTY_OFFSET = -1; // any pointer that is not set
 
@@ -50,14 +51,24 @@ namespace StreamDb.Internal.DbStructure
         private class Entry {
             /// <summary> The data of this entry. This is serialised. </summary>
             public T Data;
-            /// <summary> The index in the `nodes` array that links to this entry. Used for searchin. This is serialised. </summary>
+            
+            /// <summary> The index in the `nodes` array that links to this entry. Used for searching. This is serialised. </summary>
             public int NodeIndex;
+            
+
             /// <summary> The length of the `nodes` array when this entry was added </summary>
             /// <remarks> This is not serialised. We use it for sorting, and is restored implicitly when deserialising. </remarks>
             public int NodePosition;
+            
             /// <summary> Original position </summary>
             /// <remarks> This is not serialised. We use it for sorting, and is restored implicitly when deserialising. </remarks>
             public int EntryOrder;
+
+            /// <summary>
+            /// If true, marks an earlier entry as deleted. This supports the append-only serialisation structure.
+            /// </summary>
+            /// <remarks> This is serialised as a separate operation from normal data. </remarks>
+            public bool DeleteMarker;
         }
         
         /// <summary>
@@ -119,7 +130,17 @@ namespace StreamDb.Internal.DbStructure
             var nodeIdx = WalkPath(exactPath);
             if (nodeIdx < 0 || nodeIdx >= _nodes.Count) return;
             var node = _nodes[nodeIdx];
-            SetValue(node.DataIdx, default);
+
+            // Add a 'delete' node to the serialisation
+            InjectValueDeletion(nodeIdx);
+
+            // remove the back link from entries:
+            var dataIdx = node.DataIdx;
+            if (dataIdx >= 0 && dataIdx < _entries.Count && _entries[dataIdx] != null){
+                _entries[dataIdx].NodeIndex = EMPTY_OFFSET;
+            }
+
+            // remove the forward link from nodes:
             node.DataIdx = EMPTY_OFFSET;
         }
         
@@ -331,27 +352,55 @@ namespace StreamDb.Internal.DbStructure
             return idx;
         }
 
+        /// <summary>
+        /// Write a new value for an path position.
+        /// </summary>
+        /// <remarks>
+        /// This is always done by writing a new value to overwrite an old one, so the append-only serialised structure still works
+        /// </remarks>
         private void SetValue(int nodeIdx, T value)
         {
             if (nodeIdx < 0) throw new Exception("node index makes no sense");
             if (nodeIdx >= _nodes.Count) throw new Exception("node index makes no sense");
 
             var newIdx = _entries.Count;
-            var entry = new Entry{
+            var entry = new Entry
+            {
                 Data = value,
                 EntryOrder = newIdx,
                 NodePosition = _nodes.Count,
-                NodeIndex = nodeIdx
+                NodeIndex = nodeIdx,
+                DeleteMarker = false
             };
             _entries.Add(entry);
 
             _nodes[nodeIdx].DataIdx = newIdx;
         }
+        
+        /// <summary>
+        /// Write a 'deleted' value for an path position.
+        /// </summary>
+        private void InjectValueDeletion(int nodeIdx)
+        {
+            if (nodeIdx < 0) throw new Exception("node index makes no sense");
+            if (nodeIdx >= _nodes.Count) throw new Exception("node index makes no sense");
 
+            var entry = new Entry
+            {
+                Data = default,
+                EntryOrder = _entries.Count,
+                NodePosition = _nodes.Count,
+                NodeIndex = nodeIdx,
+                DeleteMarker = true
+            };
+            _entries.Add(entry);
+        }
+        
         private T GetValue(int nodeDataIdx)
         {
             if (nodeDataIdx < 0) return default;
             if (nodeDataIdx >= _entries.Count) return default;
+            if (_entries[nodeDataIdx]?.DeleteMarker == true) return default;
             return _entries[nodeDataIdx].Data;
         }
 
@@ -442,7 +491,6 @@ namespace StreamDb.Internal.DbStructure
                     while (dataIndex < sortedEntries.Length && sortedEntries[dataIndex] != null
                                                             && sortedEntries[dataIndex].NodePosition <= i) {
                         
-                        w.Write(DATA_MARKER);
                         WriteDataEntry(sortedEntries[dataIndex], w);
                         dataIndex++;
                     }
@@ -475,7 +523,6 @@ namespace StreamDb.Internal.DbStructure
                 // write out any data nodes that are left
                 while (dataIndex < sortedEntries.Length && sortedEntries[dataIndex] != null)
                 {
-                    w.Write(DATA_MARKER);
                     WriteDataEntry(sortedEntries[dataIndex], w);
                     dataIndex++;
                 }
@@ -526,6 +573,26 @@ namespace StreamDb.Internal.DbStructure
                                 StitchLink(result, node.Backlink, result._nodes.Count - 1);
                             }
                             break;
+                        case DELETE_MARKER:
+                            {
+                                var nodeIdx = r.ReadInt32();
+
+                                // there should be an earlier entry to disable, by NodeIndex
+                                DisableLastMatch(result._entries, result._nodes, nodeIdx);
+
+                                // still need to write the delete entry into the entries table for consistency
+                                var entry = new Entry
+                                {
+                                    Data = default,
+                                    NodeIndex = nodeIdx,
+                                    NodePosition = result._nodes.Count,
+                                    EntryOrder = result._entries.Count,
+                                    DeleteMarker = true
+                                };
+
+                                result._entries.Add(entry);
+                            }
+                            break;
                         case DATA_MARKER:
                             {
                                 var data = ReadDataEntry(r, out var nodeIdx);
@@ -535,8 +602,9 @@ namespace StreamDb.Internal.DbStructure
                                     NodeIndex = nodeIdx,
                                     NodePosition = result._nodes.Count,
                                     EntryOrder = result._entries.Count,
-                                    // TODO: how do we link back to our node index? Rescan after?
+                                    DeleteMarker = false
                                 };
+
                                 result._entries.Add(entry);
                             }
                             break;
@@ -544,6 +612,25 @@ namespace StreamDb.Internal.DbStructure
                             throw new Exception($"PathIndex.OverwriteFromStream: Invalid serialisation structure ({tag:X}) at position {stream.Position} of {stream.Length}");
                     }
                 }
+            }
+        }
+
+        private static void DisableLastMatch(List<Entry> entries, List<Node> nodes, int nodeIdx)
+        {
+            if (nodeIdx < 0) return;
+            if (entries != null)
+            {
+                for (int i = entries.Count - 1; i >= 0; i--)
+                {
+                    if (entries[i]?.NodeIndex != nodeIdx) continue;
+                    entries[i].DeleteMarker = true;
+                    entries[i].Data = default;
+                    entries[i].NodeIndex = -1;
+                }
+            }
+
+            if (nodes != null && nodeIdx < nodes.Count && nodes[nodeIdx] != null) {
+                nodes[nodeIdx].DataIdx = EMPTY_OFFSET;
             }
         }
 
@@ -594,17 +681,33 @@ namespace StreamDb.Internal.DbStructure
         private static T ReadDataEntry([NotNull]BinaryReader r, out int nodeIdx)
         {
             var length = r.ReadInt32();
-            nodeIdx = (length < 0) ? -1 : r.ReadInt32();
-            if (length <= 0) return default;
-            
+
+            if (length < 0) { // this is an invalid block
+                nodeIdx = -1;
+                return default;
+            }
+
+            nodeIdx = r.ReadInt32();
             var value = new T();
             value.Defrost(new Substream(r.BaseStream, length));
             return value;
         }
 
-        private void WriteDataEntry(Entry entry, [NotNull]BinaryWriter w)
+        private void WriteDataEntry([NotNull]Entry entry, [NotNull]BinaryWriter w)
         {
-            if (entry?.Data == null) { w.Write(EMPTY_OFFSET); return; }
+            // deletes a previous entry:
+            if (entry.DeleteMarker) {
+                w.Write(DELETE_MARKER);
+                w.Write(entry.NodeIndex);
+                return;
+            }
+
+            // is a normal data entry:
+            w.Write(DATA_MARKER);
+            if (entry.Data == null) {
+                w.Write(EMPTY_OFFSET);
+                return;
+            }
 
             var bytes = entry.Data.Freeze();
             w.Write((int)bytes.Length);

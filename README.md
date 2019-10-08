@@ -14,7 +14,7 @@ A minimalist database that uses only Streams as storage, and can survive power l
 
 ## Goals:
 
-1. Be reliable
+1. Be reliable (specifically, don't corrupt the database if the host process crashes)
 2. No 3rd party dependencies, run in most basic C# environment possible
 3. Be reasonably fast
 4. Don't waste too much disk space (i.e. re-use deleted pages and very old versions)
@@ -29,8 +29,10 @@ A minimalist database that uses only Streams as storage, and can survive power l
 ## To-do:
 
 * [ ] Improve page structure to support more robust versioning
-* [ ] Complete database entry point stuff
+* [ ] Improve path index to support multiple versions
 * [ ] Better free-list structure (more thread safe, better balancing)
+* [ ] Thread safety tests
+* [x] Complete database entry point stuff
 * [x] Re-write path lookup serialisation, so that it's append only
 * [x] Update path lookup pages to append data
 * [x] Support partly-full pages at the page header level

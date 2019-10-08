@@ -25,7 +25,7 @@ namespace StreamDb.Internal.DbStructure
         {
             Defrost(bytes);
 
-            if (!ValidateCrc()) throw new Exception("Page<T>.ctor: CRC failed");
+            if (!ValidateCrc()) throw new Exception($"Data integrity check failed loading page {pageId}");
 
             OriginalPageId = pageId;
 
@@ -43,13 +43,13 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <summary>
-        /// Write the View's data back into the raw page, and update the CRC
+        /// Write the View's data back into the raw page
         /// </summary>
         public void SyncView()
         {
             var bytes = View.Freeze();
             Write(bytes, 0, 0, bytes.Length);
-            UpdateCRC();
+            //UpdateCRC();
         }
     }
 
@@ -237,7 +237,6 @@ namespace StreamDb.Internal.DbStructure
             var actual = Crc32.Compute(_data);
             CrcHash = original;
 
-
             return actual == original;
         }
 
@@ -317,10 +316,22 @@ namespace StreamDb.Internal.DbStructure
             return ms;
         }
 
+        /// <summary>
+        /// Get a COPY of the pages's content data. Does not include headers.
+        /// </summary>
+        /// <returns></returns>
         [NotNull]public byte[] GetData()
         {
             // TODO: split the header and data arrays internally to reduce copying?
             return Slice(PAGE_DATA, PageDataCapacity);
+        }
+
+        /// <summary>
+        /// Read a single byte from the page content
+        /// </summary>
+        public byte GetByte(int offset)
+        {
+            return _data[PAGE_DATA + offset];
         }
     }
 }

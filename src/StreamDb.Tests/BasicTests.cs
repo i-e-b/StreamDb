@@ -1,6 +1,9 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using NUnit.Framework;
+using StreamDb.Internal.Support;
+
 // ReSharper disable PossibleNullReferenceException
 
 namespace StreamDb.Tests
@@ -138,21 +141,107 @@ namespace StreamDb.Tests
                 }
 
                 // finally, try to read the document back
-                Assert.Throws<Exception>(()=>{subject.Get("this document will be damaged", out _);}, "Database did not notice damage");
+                var ex = Assert.Throws<Exception>(()=>{subject.Get("this document will be damaged", out _);}, "Database did not notice damage");
+                Assert.That(ex.Message, Contains.Substring("Data integrity check failed"));
             }
         }
         
         [Test]
-        public void lookup_the_paths_for_a_value () {
-            Assert.Fail("NYI");
+        public void lookup_the_paths_for_a_document_id () {
+            using (var ms = new MemoryStream())
+            {
+                var subject = Database.TryConnect(ms);
+
+                var docId = subject.WriteDocument("original/path", MakeTestDocument());
+                subject.BindToPath(docId, "new/path/same/document");
+                
+                subject.WriteDocument("different", MakeTestDocument()); // should not be found
+
+                var found = string.Join(", ", subject.ListPaths(docId));
+                Assert.That(found, Is.EqualTo("original/path, new/path/same/document"));
+            }
         }
 
         [Test]
         public void search_for_paths_with_a_path_prefix () {
-            Assert.Fail("NYI");
+            using (var ms = new MemoryStream())
+            {
+                var subject = Database.TryConnect(ms);
+
+                // spam a few paths
+                subject.WriteDocument("Some may say that this is not a path", MakeTestDocument());
+                subject.WriteDocument("But the route you take is your own", MakeTestDocument());
+                subject.WriteDocument("test result uno", MakeTestDocument());
+                subject.WriteDocument("test result dos", MakeTestDocument());
+                subject.WriteDocument("{This is really all for padding}", MakeTestDocument());
+
+                var result = subject.Search("test result");
+
+                var found = string.Join(", ", result);
+                Assert.That(found, Is.EqualTo("test result uno, test result dos"));
+            }
+        }
+
+        [Test]
+        public void removing_a_document_removes_it_from_all_paths (){
+            using (var ms = new MemoryStream())
+            {
+                var subject = Database.TryConnect(ms);
+
+                var docId = subject.WriteDocument("original/path", MakeTestDocument());
+                subject.BindToPath(docId, "new/path/same/document");
+                
+                subject.Delete(docId);
+
+                var found = subject.ListPaths(docId).ToList();
+                Assert.That(found, Is.Empty);
+            }
+        }
+
+        [Test]
+        public void unbinding_a_document_from_a_path_does_not_remove_the_document_or_other_paths (){
+            using (var ms = new MemoryStream())
+            {
+                var subject = Database.TryConnect(ms);
+
+                var docId = subject.WriteDocument("original/path", MakeTestDocument());
+                subject.BindToPath(docId, "new/path/same/document");
+                
+                subject.UnbindPath(docId, "original/path");
+
+                var found = string.Join(", ", subject.ListPaths(docId));
+                Assert.That(found, Is.EqualTo("new/path/same/document"));
+            }
+        }
+
+        [Test]
+        public void unbinding_the_last_path_for_a_document_does_not_delete_it () {
+            using (var ms = new MemoryStream())
+            {
+                var testDoc = MakeTestDocument();
+                var subject = Database.TryConnect(ms);
+
+                var docId = subject.WriteDocument("original/path", testDoc);
+                subject.UnbindPath(docId, "original/path");
+
+                // check nothing is bound
+                var found = subject.ListPaths(docId).ToList();
+                Assert.That(found, Is.Empty, "Path were still bound, but should have been empty");
+
+                // bind a new path
+                subject.BindToPath(docId, "new/path");
+
+                // check we can read it
+                var ok = subject.Get("new/path", out var data);
+                Assert.That(ok, Is.True, "Get failed");
+
+                // check data is correct
+                var original = testDoc.ToHexString();
+                var result = data.ToHexString();
+                Assert.That(result, Is.EqualTo(original));
+            }
         }
         
-
         [Test, Explicit("Slow test")]
         public void stress_test_overwrite (){
             using (var doc = MakeTestDocument())
@@ -189,7 +278,7 @@ namespace StreamDb.Tests
                 Console.WriteLine($"Empty database is {ms.Length / 1024}kb");
 
                 // write lots of documents, all in new document chains
-                Console.Write("Writing a 1000 documents");
+                Console.Write("Writing 1000 documents");
 
                 for (int i = 0; i < 1000; i++)
                 {

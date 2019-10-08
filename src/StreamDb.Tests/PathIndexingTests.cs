@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using NUnit.Framework;
 using StreamDb.Internal.DbStructure;
 using StreamDb.Internal.Support;
@@ -328,6 +326,80 @@ namespace StreamDb.Tests
             var result = string.Join(", ", reconstituted.GetPathsForEntry("value3"));
 
             Assert.That(result, Is.EqualTo("my/other/path, another/path/for/3"));
+        }
+
+        [Test]
+        public void can_remove_a_path () {
+            var source = new PathIndex<ByteString>();
+
+            source.Add("my/path/1", "value0");
+            source.Add("my/path/dead", "value0");
+            source.Add("my/path/2", "value0");
+
+            source.Delete("my/path/dead");
+            
+            var result = string.Join(", ", source.GetPathsForEntry("value0"));
+
+            Assert.That(result, Is.EqualTo("my/path/1, my/path/2"));
+        }
+
+        [Test]
+        public void path_removal_survives_incremental_serialisation () {
+            
+            // 1. Write a few paths, and serialise to an array
+            // 2. Write a few more path, serialise to another array
+            // 3. Make a third array, from the head of the first and the tail of the second
+            // 4. Deserialise from the 3rd array, check it is fully functional.
+
+            // NOTE: this does not cover changes to pre-existing paths!
+
+            var source = new PathIndex<ByteString>();
+
+            source.Add("my/path/1", "value1");
+            source.Add("my/path/2", "value2");
+            source.Add("my/other/path", "value3");
+            source.Add("my/other/path/longer", "value4");
+
+            // get originals
+            var bytes1 = source.Freeze();
+            Console.WriteLine($"First len = {bytes1.Length}");
+
+            source.Add("my/path/3", "value5");
+            source.Add("my/path/4", "value6");
+            source.Delete("my/path/1");
+            source.Delete("my/path/2");
+
+            // get extended
+            var bytes2 = source.Freeze();
+            Console.WriteLine($"Second len = {bytes2.Length}");
+            Assert.That(bytes2.Length, Is.GreaterThan(bytes1.Length), "Adding entries did not change the serialised size");
+
+            // make a new one with only the added bytes
+            var concat = new MemoryStream();
+
+            bytes1.Seek(0, SeekOrigin.Begin);
+            bytes1.CopyTo(concat);
+
+            bytes2.Seek(bytes1.Length - 1, SeekOrigin.Begin);
+            bytes2.CopyTo(concat);
+            
+            // illustrate data
+            bytes1.Seek(0,SeekOrigin.Begin);
+            bytes2.Seek(0,SeekOrigin.Begin);
+            Console.WriteLine(bytes1.ToHexString());
+            Console.WriteLine(bytes2.ToHexString());
+
+
+            var result = new PathIndex<ByteString>();
+            concat.Seek(0, SeekOrigin.Begin);
+            result.Defrost(concat);
+
+            Assert.That((string)result.Get("my/path/1"), Is.Null);
+            Assert.That((string)result.Get("my/path/2"), Is.Null);
+            Assert.That((string)result.Get("my/other/path"), Is.EqualTo("value3"));
+            Assert.That((string)result.Get("my/other/path/longer"), Is.EqualTo("value4"));
+            Assert.That((string)result.Get("my/path/3"), Is.EqualTo("value5"));
+            Assert.That((string)result.Get("my/path/4"), Is.EqualTo("value6"));
         }
     }
 }

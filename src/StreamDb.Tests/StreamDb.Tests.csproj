@@ -49,6 +49,7 @@
     <Compile Include="PageTableTests.cs" />
     <Compile Include="PathIndexingTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ThreadingAndRecoveryTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

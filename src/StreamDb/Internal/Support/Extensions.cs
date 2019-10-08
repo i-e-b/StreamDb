@@ -32,5 +32,11 @@ namespace StreamDb.Internal.Support
             if (s == null) return 0;
             return (int)(s.Length - s.Position);
         }
+
+        public static Stream Rewind(this Stream s) {
+            if (s == null) return null;
+            s.Seek(0, SeekOrigin.Begin);
+            return s;
+        }
     }
 }

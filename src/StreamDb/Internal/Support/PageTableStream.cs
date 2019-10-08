@@ -41,10 +41,10 @@ namespace StreamDb.Internal.Support
             var pageNumber = (int)(_requestedOffset / Page.PageDataCapacity);
             var chunkOffset = (int)(_requestedOffset % Page.PageDataCapacity);
 
-            if (pageNumber < 0 || pageNumber > _endPage.DocumentSequence) return 0; // off the ends
+            if (pageNumber < 0 || pageNumber > _endPage.DocumentSequence) return -1; // off the ends
 
             var page = FindPage(pageNumber);
-            if (page == null) return 0; // out of bounds
+            if (page == null) return -1; // out of bounds
 
             var remaining = count;
             var read = 0;
@@ -70,10 +70,29 @@ namespace StreamDb.Internal.Support
             return read;
         }
 
+        /// <inheritdoc />
+        public override int ReadByte()
+        {
+            var pageNumber = (int)(_requestedOffset / Page.PageDataCapacity);
+            var chunkOffset = (int)(_requestedOffset % Page.PageDataCapacity);
+
+            if (pageNumber < 0 || pageNumber > _endPage.DocumentSequence) return -1; // off the ends
+
+            var page = FindPage(pageNumber);
+            if (page == null) return -1; // out of bounds
+            if (chunkOffset >= page.PageDataLength) return -1; // end of content data
+
+            var data = page.GetByte(chunkOffset);
+            _requestedOffset++;
+            return data;
+        }
+
         private Page FindPage(int pageNumber)
         {
             if (_mostRecentPage?.DocumentSequence == pageNumber) { return _mostRecentPage; }
-            return _parent.FindPageInChain(_endPage, pageNumber);
+            var page = _parent.FindPageInChain(_endPage, pageNumber);
+            _mostRecentPage = page;
+            return page;
         }
 
         /// <summary>

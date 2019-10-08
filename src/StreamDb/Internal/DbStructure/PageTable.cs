@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using JetBrains.Annotations;
 using StreamDb.Internal.Support;
 
@@ -668,6 +669,15 @@ namespace StreamDb.Internal.DbStructure
             var sg = lookup.Get(path);
             return sg?.Value ?? Guid.Empty;
         }
+        
+        /// <summary>
+        /// List all paths that match a document id
+        /// </summary>
+        [NotNull, ItemNotNull]public IEnumerable<string> ListPathsForDocument(Guid docId)
+        {
+            var lookup = ReadPathIndex();
+            return lookup.GetPathsForEntry(docId);
+        }
 
         private void CommitPathIndexCache()
         {
@@ -721,10 +731,59 @@ namespace StreamDb.Internal.DbStructure
             return _pathIndexCache;
         }
 
+        /// <summary>
+        /// Delete a document page chain. Does NOT directly affect the path index or document index
+        /// </summary>
         public void DeleteDocument(Guid oldId)
         {
             var pageId = GetPageIdFromDocumentId(oldId);
             if (pageId > 3) DeletePageChain(pageId);
+        }
+
+        /// <summary>
+        /// Unbind all paths for the given document ID.
+        /// This does not delete the document page chain or update the document index
+        /// </summary>
+        public void DeletePathsForDocument(Guid documentId)
+        {
+            var lookup = ReadPathIndex();
+            var found = lookup.GetPathsForEntry(documentId).ToArray();
+            foreach (var path in found)
+            {
+                lookup.Delete(path);
+            }
+            CommitPathIndexCache();
+        }
+
+        /// <summary>
+        /// Remove a document from the main index.
+        /// You should also call `DeletePathsForDocument` and `DeleteDocument`
+        /// </summary>
+        /// <remarks>
+        /// This really just marks the document as invalid. We might add some garbage collection later.
+        /// </remarks>
+        public void RemoveFromIndex(Guid documentId)
+        {
+            var index = GetIndexPageList();
+            index.View.Update(documentId, -1, out _);
+        }
+
+        /// <summary>
+        /// Remove a single path from the path index, iff the path currently matches the given document id
+        /// </summary>
+        public void DeleteSinglePathForDocument(Guid docId, string path)
+        {
+            var lookup = ReadPathIndex();
+            if (lookup.Get(path)?.Value != docId) return;
+
+            lookup.Delete(path);
+        }
+
+        [NotNull, ItemNotNull]
+        public IEnumerable<string> SearchPaths(string pathPrefix)
+        {
+            var lookup = ReadPathIndex();
+            return lookup.Search(pathPrefix);
         }
     }
 }
