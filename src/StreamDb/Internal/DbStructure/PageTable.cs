@@ -474,18 +474,22 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         public void CommitPage(Page page, bool writeJournal) {
             if (page == null || page.OriginalPageId < 0) throw new Exception("Attempted to commit an invalid page");
-            page.UpdateCRC();
 
             if (writeJournal) {
                 var ok = false;
                 var free = GetFreePageList();
-                while (!ok) {
+                while (!ok)
+                {
                     ok = free.View.TryAdd(page.OriginalPageId, FreeListPage.FreeKind.Journal);
-                    if (!ok) { free = WalkFreeList(free); }
-                    else { CommitPage(free, false); }
+                    if (ok) {
+                        CommitPage(free, false);
+                        break;
+                    }
+                    free = WalkFreeList(free);
                 }
             }
 
+            page.UpdateCRC();
             var w = _storage.AcquireWriter();
             try {
                 CommitPage(page, w);
@@ -520,7 +524,7 @@ namespace StreamDb.Internal.DbStructure
             Page page = null;
             var buf = new byte[Page.PageDataCapacity];
             int bytes;
-            while ((bytes = docDataStream.Read(buf,0,buf.Length)) > 0) { // TODO: optimise this now we've switched to streams
+            while ((bytes = docDataStream.Read(buf,0,buf.Length)) > 0) {
                 var next = ChainPage(page, new MemoryStream(buf), bytes, true);
 
                 if (next.PageType == PageType.Invalid) { // first page
@@ -544,7 +548,7 @@ namespace StreamDb.Internal.DbStructure
         /// This should be called after a `WriteDocument` and the storage is flushed.
         /// </summary>
         public void CommitDocumentById(Guid docId) {
-            // TODO: get end page from index; walk backwards, unmark from freelist
+            // get end page from index; walk backwards, unmark from freelist
             var pageId = GetPageIdFromDocumentId(docId);
             var page = GetPageRaw(pageId);
             var freeRoot = GetFreePageList();
@@ -561,7 +565,7 @@ namespace StreamDb.Internal.DbStructure
                     CommitPage(chainPage, false);
                 }
 
-                page = WalkPageChain(page);
+                page = WalkPageChainBackward(page);
             }
             CommitPage(freeRoot, false);
         }
@@ -679,6 +683,17 @@ namespace StreamDb.Internal.DbStructure
             if (page == null) return null;
             if (page.NextPageId < 0) return null;
             return GetPageRaw(page.NextPageId);
+        }
+        
+        /// <summary>
+        /// Step backward in the page chain. Returns null if at the start.
+        /// Does not extend chains.
+        /// </summary>
+        [CanBeNull]public Page WalkPageChainBackward(Page page)
+        {
+            if (page == null) return null;
+            if (page.PrevPageId < 0) return null;
+            return GetPageRaw(page.PrevPageId);
         }
 
         /// <summary>

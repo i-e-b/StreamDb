@@ -89,6 +89,7 @@ namespace StreamDb.Tests
             
             // use some space and try again
             result.WriteDocument("successful2", MakeTestDocument());
+            result.WriteDocument("successful3", MakeTestDocument());
             
             result.CalculateStatistics(out totalPages, out freePages);
             Console.WriteLine($"Stats after writing: total pages = {totalPages}; free = {freePages}");
