@@ -284,7 +284,7 @@ namespace StreamDb.Internal.DbStructure
             {
                 var pageId = freeList.View.GetNext();
                 if (pageId > 0) { 
-                    CommitPage(freeList);
+                    CommitPage(freeList, false);
                     var page = GetPageRaw(pageId);
                     if (page == null) break;
                     return page;
@@ -357,7 +357,7 @@ namespace StreamDb.Internal.DbStructure
             var loopHash = new HashSet<int>();
 
             while (current != null) {
-                var ok = free.View.TryAdd(current.OriginalPageId);
+                var ok = free.View.TryAdd(current.OriginalPageId, FreeListPage.FreeKind.Expired);
                 loopHash.Add(current.OriginalPageId);
 
                 if (!ok) {
@@ -366,7 +366,7 @@ namespace StreamDb.Internal.DbStructure
                     continue;
                 } else {
                     // commit back to storage
-                    CommitPage(free);
+                    CommitPage(free, false);
                 }
 
                 if (loopHash.Contains(current.NextPageId)) throw new Exception("Loop detected in page list.");
@@ -383,9 +383,9 @@ namespace StreamDb.Internal.DbStructure
             if (freeLink.NextPageId > 0) {
                 return GetPageView<FreeListPage>(freeLink.NextPageId) ?? throw new Exception("Free page list chain is broken");
             }
-    
+
             // end of chain. Extend it.
-            var newPage = ChainPage(freeLink, new FreeListPage().Freeze(), -1);
+            var newPage = ChainPage(freeLink, new FreeListPage().Freeze(), -1, false);
             return Page<FreeListPage>.FromRaw(newPage);
         }
 
@@ -396,7 +396,8 @@ namespace StreamDb.Internal.DbStructure
         /// <param name="other">End of a page chain.</param>
         /// <param name="optionalContent">Data bytes to insert, if any</param>
         /// <param name="contentLength">Length of data to use. To use entire buffer, you can pass -1</param>
-        [NotNull]public Page ChainPage([CanBeNull] Page other, [CanBeNull]Stream optionalContent, int contentLength) {
+        /// <param name="writeJournal">If true, new pages are written in a non-committed state. You must commit your document before closing the database.</param>
+        [NotNull]public Page ChainPage([CanBeNull] Page other, [CanBeNull]Stream optionalContent, int contentLength, bool writeJournal) {
             if (optionalContent == null) contentLength = 0;
             else if (contentLength > optionalContent.Length) throw new Exception("Page content length requested is outside of buffer provided");
             else if (contentLength < 0) contentLength = (int)optionalContent.Length; // allow `-1` for whole buffer
@@ -418,7 +419,7 @@ namespace StreamDb.Internal.DbStructure
                 if (optionalContent != null) {
                     first.Write(optionalContent, 0, 0, contentLength);
                 }
-                CommitPage(first);
+                CommitPage(first, writeJournal);
                 return first;
             }
 
@@ -438,11 +439,12 @@ namespace StreamDb.Internal.DbStructure
             if (optionalContent != null) {
                 newPage.Write(optionalContent, 0, 0, contentLength);
             }
-            CommitPage(newPage);
+            CommitPage(newPage, writeJournal);
 
+            // TODO: update the forward chain as part of a commit if we're in journal mode?
             other.NextPageId = newPage.OriginalPageId; // race condition risk!
             other.Dirty = true;
-            CommitPage(other);
+            CommitPage(other, false);
 
             return newPage;
         }
@@ -451,19 +453,29 @@ namespace StreamDb.Internal.DbStructure
         /// Write a page into the storage stream. The PageID *MUST* be correct.
         /// This method is very thread sensitive
         /// </summary>
-        public void CommitPage<T>(Page<T> page) where T : IStreamSerialisable, new()
+        public void CommitPage<T>(Page<T> page, bool writeJournal) where T : IStreamSerialisable, new()
         {
             page?.SyncView();
-            CommitPage((Page)page);
+            CommitPage((Page)page, writeJournal);
         }
 
         /// <summary>
         /// Write a page into the storage stream. The PageID *MUST* be correct.
         /// This method is very thread sensitive
         /// </summary>
-        public void CommitPage(Page page) {
+        public void CommitPage(Page page, bool writeJournal) {
             if (page == null || page.OriginalPageId < 0) throw new Exception("Attempted to commit an invalid page");
             page.UpdateCRC();
+
+            if (writeJournal) {
+                var ok = false;
+                var free = GetFreePageList();
+                while (!ok) {
+                    ok = free.View.TryAdd(page.OriginalPageId, FreeListPage.FreeKind.Journal);
+                    if (!ok) { free = WalkFreeList(free); }
+                    else { CommitPage(free, false); }
+                }
+            }
 
             var w = _storage.AcquireWriter();
             try {
@@ -473,7 +485,7 @@ namespace StreamDb.Internal.DbStructure
                 _storage.Release(ref w);
             }
         }
-
+        
         /// <summary>
         /// Write a page into the storage stream. The PageID *MUST* be correct.
         /// This method is very thread sensitive
@@ -499,11 +511,11 @@ namespace StreamDb.Internal.DbStructure
             var buf = new byte[Page.PageDataCapacity];
             int bytes;
             while ((bytes = docDataStream.Read(buf,0,buf.Length)) > 0) { // TODO: optimise this now we've switched to streams
-                var next = ChainPage(page, new MemoryStream(buf), bytes);
+                var next = ChainPage(page, new MemoryStream(buf), bytes, true);
 
                 if (next.PageType == PageType.Invalid) { // first page
                     next.PageType = PageType.Data;
-                    CommitPage(next);
+                    CommitPage(next, true);
                 }
 
                 page = next;
@@ -512,6 +524,9 @@ namespace StreamDb.Internal.DbStructure
 
             // add to index
             WriteToIndex(page);
+
+            // TODO: commit journal entries
+
 
             // return ID
             return page.DocumentId;
@@ -530,7 +545,7 @@ namespace StreamDb.Internal.DbStructure
             {
                 var ok = index.View.TryInsert(lastPage.DocumentId, lastPage.OriginalPageId);
                 if (ok) { 
-                    CommitPage(index);
+                    CommitPage(index, false);
                     return;
                 }
 
@@ -552,7 +567,7 @@ namespace StreamDb.Internal.DbStructure
     
             // end of chain. Extend it?
             if (!shouldAdd) return null;
-            var newPage = ChainPage(indexLink, new IndexPage().Freeze(), -1);
+            var newPage = ChainPage(indexLink, new IndexPage().Freeze(), -1, false);
             return Page<IndexPage>.FromRaw(newPage);
         }
 
@@ -715,7 +730,7 @@ namespace StreamDb.Internal.DbStructure
 
             var page = NewRootPage(_rootPageCache);
             
-            CommitPage(page);
+            CommitPage(page, false);
         }
 
         [NotNull]private PathIndex<SerialGuid> ReadPathIndex()

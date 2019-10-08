@@ -149,7 +149,7 @@ namespace StreamDb.Internal.Support
                 if (chunkLength > 0)
                 {
                     page.Write(buffer, offset, chunkOffset, chunkLength);
-                    _parent.CommitPage(page);
+                    _parent.CommitPage(page, false);
 
                     remaining -= chunkLength;
                     offset += chunkLength;
@@ -162,7 +162,7 @@ namespace StreamDb.Internal.Support
 
                 // extend page chain
                 var next = _parent.WalkPageChain(page);
-                if (next == null) next = _parent.ChainPage(page, null, -1);
+                if (next == null) next = _parent.ChainPage(page, null, -1, false);
                 page = next;
             }
             _mostRecentPage = page;

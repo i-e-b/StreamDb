@@ -55,7 +55,7 @@ namespace StreamDb.Tests
                 testPage.DocumentId = Guid.NewGuid();
                 testPage.Write(sample, 0, 0, sample.Length);
                 testPage.UpdateCRC();
-                creator.CommitPage(testPage);
+                creator.CommitPage(testPage, false);
 
                 source.Seek(0, SeekOrigin.Begin);
                 raw = source.ToArray();

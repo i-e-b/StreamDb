@@ -21,7 +21,7 @@ namespace StreamDb.Tests
         public void adding_a_page_to_a_list_with_space_is_accepted () {
             var subject = new FreeListPage();
 
-            bool ok = subject.TryAdd(123);
+            bool ok = subject.TryAdd(123, FreeListPage.FreeKind.Expired);
 
             Assert.That(ok, Is.True, "Add was rejected");
         }
@@ -30,7 +30,7 @@ namespace StreamDb.Tests
         public void adding_a_static_page_is_rejected () {
             var subject = new FreeListPage();
 
-            bool ok = subject.TryAdd(1);
+            bool ok = subject.TryAdd(1, FreeListPage.FreeKind.Expired);
 
             Assert.That(ok, Is.False, "Add was accepted, but should have been rejected");
         }
@@ -39,7 +39,7 @@ namespace StreamDb.Tests
         public void adding_a_negative_page_id_is_rejected () {
             var subject = new FreeListPage();
 
-            bool ok = subject.TryAdd(-1);
+            bool ok = subject.TryAdd(-1, FreeListPage.FreeKind.Expired);
 
             Assert.That(ok, Is.False, "Add was accepted, but should have been rejected");
         }
@@ -48,8 +48,8 @@ namespace StreamDb.Tests
         public void can_consume_an_added_page () {
             var subject = new FreeListPage();
 
-            subject.TryAdd(123);
-            subject.TryAdd(234);
+            subject.TryAdd(123, FreeListPage.FreeKind.Expired);
+            subject.TryAdd(234, FreeListPage.FreeKind.Expired);
 
             var found = subject.GetNext();
 
@@ -63,7 +63,7 @@ namespace StreamDb.Tests
             int i;
             for (i = 0; i < FreeListPage.Capacity * 2; i++)
             {
-                if (!subject.TryAdd(i + 4)) break;
+                if (!subject.TryAdd(i + 4, FreeListPage.FreeKind.Expired)) break;
             }
 
             Assert.That(i, Is.EqualTo(FreeListPage.Capacity), "Free list did not stop at limit");
@@ -75,14 +75,14 @@ namespace StreamDb.Tests
             var rnd = new Random();
             var subject = new FreeListPage();
 
-            int v;
             for (int i = 0; i < 1000; i++)
             {
                 var q = rnd.Next(0, 2);
+                int v;
                 switch (q) {
                     case 0:
                         v = rnd.Next(4,50000);
-                        if (!expected.Contains(v) && subject.TryAdd(v)) {
+                        if (!expected.Contains(v) && subject.TryAdd(v, FreeListPage.FreeKind.Expired)) {
                             expected.Add(v);
                         }
                         Console.Write("+");
@@ -112,7 +112,7 @@ namespace StreamDb.Tests
             {
                 Console.Write($"{i}, ");
                 added.Add(i);
-                original.TryAdd(i);
+                original.TryAdd(i, FreeListPage.FreeKind.Expired);
             }
 
             var bytes = original.Freeze();

@@ -57,15 +57,25 @@ namespace StreamDb.Tests
 
             // Write a good document, then a failure
             subject.WriteDocument("successful", MakeTestDocument());
-            stream.CutoffAfter((int) (Page.PageDataCapacity * 1.9)); // make sure we have more than one page written
+            
+            subject.CalculateStatistics(out var s1_totalPages, out var s1_freePages);
+            Console.WriteLine($"First write: total pages = {s1_totalPages}; free = {s1_freePages}");
+
+            stream.CutoffAfter(Page.PageDataCapacity * 3); // make sure we have more than one page written
             subject.WriteDocument("failure", MakeTestDocument());
+
+            subject.CalculateStatistics(out var s2_totalPages, out var s2_freePages);
+            Console.WriteLine($"Second write: total pages = {s2_totalPages}; free = {s2_freePages}");
 
             Assert.That(stream.HasCutoff(), Is.True, "Failed to break output stream");
 
             // Load a new database from the truncated data
             baseStream.Rewind();
             var rawResult = baseStream.ToArray();
-            var newStream = new MemoryStream(rawResult);
+            var newStream = new MemoryStream();
+            newStream.Write(rawResult,0, rawResult.Length);
+            newStream.Rewind();
+
 
             var result = Database.TryConnect(newStream);
 
@@ -77,6 +87,7 @@ namespace StreamDb.Tests
             // use some space and try again
             result.WriteDocument("successful2", MakeTestDocument());
             
+            result.CalculateStatistics(out totalPages, out freePages);
             Console.WriteLine($"Stats after writing: total pages = {totalPages}; free = {freePages}");
             Assert.That(freePages, Is.Zero, "Free pages were not consumed");
         }
@@ -98,14 +109,14 @@ namespace StreamDb.Tests
         }
         
         /// <summary>
-        /// Makes a stream with 10kb of random data
+        /// Makes a stream with 20kb of random data
         /// </summary>
         private static Stream MakeTestDocument()
         {
             var ms = new MemoryStream();
             var rnd= new Random();
             var buf = new byte[1024];
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 20; i++)
             {
                 rnd.NextBytes(buf);
                 ms.Write(buf, 0, buf.Length);
