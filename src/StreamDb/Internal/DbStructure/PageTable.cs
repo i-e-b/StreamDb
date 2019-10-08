@@ -219,7 +219,13 @@ namespace StreamDb.Internal.DbStructure
                 _storage.Release(ref reader);
             }
         }
-        [CanBeNull]public Page GetPageRaw(int pageId)
+
+        /// <summary>
+        /// Read a raw page block (without a view)
+        /// </summary>
+        /// <param name="pageId">Page ID</param>
+        /// <param name="ignoreCrc">Optional: if true, the CRC will not be checked</param>
+        [CanBeNull]public Page GetPageRaw(int pageId, bool ignoreCrc = false)
         {
             var reader = _storage.AcquireReader();
             try {
@@ -236,7 +242,7 @@ namespace StreamDb.Internal.DbStructure
                 var result = new Page();
                 result.Defrost(new Substream(reader.BaseStream, Page.PageRawSize));
                 result.OriginalPageId = pageId;
-                if (!result.ValidateCrc()) throw new Exception($"CRC failed at page {pageId}");
+                if (!ignoreCrc && !result.ValidateCrc()) throw new Exception($"CRC failed at page {pageId}");
                 return result;
             } finally {
                 _storage.Release(ref reader);
@@ -285,7 +291,7 @@ namespace StreamDb.Internal.DbStructure
                 var pageId = freeList.View.GetNext();
                 if (pageId > 0) { 
                     CommitPage(freeList);
-                    var page = GetPageRaw(pageId);
+                    var page = GetPageRaw(pageId, ignoreCrc: true);
                     if (page == null) break;
                     return page;
                 }

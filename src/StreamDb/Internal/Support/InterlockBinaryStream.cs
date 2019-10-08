@@ -14,7 +14,6 @@ namespace StreamDb.Internal.Support
     {
         private volatile Stream _token, _master;
         private readonly bool _closeBase;
-        [NotNull] private readonly object _lock = new object();
 
         public InterlockBinaryStream([NotNull]Stream baseStream, bool closeBaseStream = true)
         {
@@ -30,16 +29,13 @@ namespace StreamDb.Internal.Support
         [NotNull]
         public BinaryReader AcquireReader()
         {
-            lock (_lock)
+            var stream = Interlocked.Exchange(ref _token, null);
+            while (stream == null)
             {
-                var stream = Interlocked.Exchange(ref _token, null);
-                while (stream == null)
-                {
-                    Task.Delay(1)?.Wait();
-                    stream = Interlocked.Exchange(ref _token, null);
-                }
-                return new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
+                Task.Delay(1)?.Wait();
+                stream = Interlocked.Exchange(ref _token, null);
             }
+            return new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
         }
 
         /// <summary>
@@ -49,39 +45,32 @@ namespace StreamDb.Internal.Support
         [NotNull]
         public BinaryWriter AcquireWriter()
         {
-            lock (_lock)
+            var stream = Interlocked.Exchange(ref _token, null);
+            while (stream == null)
             {
-                var stream = Interlocked.Exchange(ref _token, null);
-                while (stream == null)
-                {
-                    Task.Delay(1)?.Wait();
-                    stream = Interlocked.Exchange(ref _token, null);
-                }
-                return new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+                Task.Delay(1)?.Wait();
+                stream = Interlocked.Exchange(ref _token, null);
             }
+            return new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
         }
 
         public void Release(ref BinaryReader reader)
         {
-            lock (_lock)
-            {
-                if (reader == null || reader.BaseStream != _master) throw new Exception("Invalid threadlock stream release (reader)");
-                reader.Dispose();
-                _token = _master;
-                reader = null;
-            }
+            if (reader == null || reader.BaseStream != _master) throw new Exception("Invalid threadlock stream release (reader)");
+            reader.Dispose();
+            var old = Interlocked.Exchange(ref _token, _master);
+            if (old != null) throw new Exception("Invalid interlock");
+            reader = null;
         }
 
         public void Release(ref BinaryWriter writer)
         {
-            lock (_lock)
-            {
-                if (writer == null || writer.BaseStream != _master) throw new Exception("Invalid threadlock stream release (writer)");
-                writer.Flush();
-                writer.Dispose();
-                _token = _master;
-                writer = null;
-            }
+            if (writer == null || writer.BaseStream != _master) throw new Exception("Invalid threadlock stream release (writer)");
+            writer.Flush();
+            writer.Dispose();
+            var old = Interlocked.Exchange(ref _token, _master);
+            if (old != null) throw new Exception("Invalid interlock");
+            writer = null;
         }
 
         public void Close()
@@ -98,10 +87,7 @@ namespace StreamDb.Internal.Support
 
         public void Flush()
         {
-            lock (_lock)
-            {
-                _master?.Flush();
-            }
+            _master?.Flush();
         }
     }
 }

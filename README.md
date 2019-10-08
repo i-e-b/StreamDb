@@ -32,6 +32,7 @@ A minimalist database that uses only Streams as storage, and can survive power l
 * [ ] Improve path index to support multiple versions
 * [ ] Better free-list structure (more thread safe, better balancing)
 * [ ] Thread safety tests
+* [ ] Try replacing CRC with some kind of FEC code
 * [x] Complete database entry point stuff
 * [x] Re-write path lookup serialisation, so that it's append only
 * [x] Update path lookup pages to append data
