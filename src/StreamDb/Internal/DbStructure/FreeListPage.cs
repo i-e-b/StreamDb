@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using JetBrains.Annotations;
 using StreamDb.Internal.Support;
 
@@ -78,6 +79,25 @@ namespace StreamDb.Internal.DbStructure
         }
         
         /// <summary>
+        /// Try to remove a pageId from the journal list.
+        /// If there is no such pageId in this free page, returns false
+        /// </summary>
+        public bool UnmarkJournal(int pageId)
+        {
+            if (pageId < 3) return false;
+            for (int i = 0; i < Capacity; i++)
+            {
+                if (_entries[i].PageId == pageId && _entries[i].Kind != FreeKind.Invalid)
+                {
+                    if (_entries[i].Kind != FreeKind.Journal) throw new Exception("Tried to unmark a journal page, but it was marked as something else");
+                    _entries[i].Kind = FreeKind.Invalid;
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        /// <summary>
         /// Try to add a new free page to the list. Returns true if it worked, false if there was no free space
         /// </summary>
         public bool TryAdd(int pageId, FreeKind kind)
@@ -136,6 +156,22 @@ namespace StreamDb.Internal.DbStructure
                 if (_entries[i].Kind != FreeKind.Invalid) count++;
             }
             return count;
+        }
+
+        /// <summary>
+        /// Flip any journal pages to free pages. Returns true if any found
+        /// </summary>
+        public bool AbandonJournal()
+        {
+            var count = 0;
+            for (int i = 0; i < Capacity; i++)
+            {
+                if (_entries[i].Kind == FreeKind.Journal) {
+                    _entries[i].Kind = FreeKind.Expired;
+                    count++;
+                }
+            }
+            return count > 0;
         }
     }
 }

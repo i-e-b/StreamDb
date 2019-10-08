@@ -26,10 +26,17 @@ namespace StreamDb
         [NotNull]   private readonly Stream       _fs;
         [NotNull]   private readonly PageTable    _pages;
 
+        public StartupState StartupState { get; set; }
+
         private Database(Stream fs)
         {
             _fs = fs ?? throw new ArgumentNullException(nameof(fs));
             _pages = new PageTable(_fs);
+            StartupState = StartupState.Clean;
+
+            if (_pages.AbandonJournal()) {
+                StartupState = StartupState.DirtyJournal;
+            }
         }
 
         /// <summary>
@@ -67,6 +74,9 @@ namespace StreamDb
             var id = _pages.WriteDocument(data);
             if (id == Guid.Empty) throw new Exception("Failed to write document data");
             var oldId = _pages.BindPathToDocument(path, id);
+
+            _fs.Flush();
+            _pages.CommitDocumentById(id);
 
             if (oldId != Guid.Empty && oldId != id) {
                 // replaced an existing document
@@ -156,5 +166,28 @@ namespace StreamDb
             totalPages = (int) (_fs.Length / Page.PageRawSize);
             freePages = _pages.CountFreePages();
         }
+    }
+
+    /// <summary>
+    /// State of the database when it was last opened
+    /// </summary>
+    public enum StartupState
+    {
+        /// <summary>
+        /// The database passed all basic tests
+        /// </summary>
+        Clean,
+
+        /// <summary>
+        /// The database was not closed correctly.
+        /// Journalled changes have been lost.
+        /// </summary>
+        DirtyJournal,
+
+        /// <summary>
+        /// The database suffered significant damage.
+        /// Data has been recovered as far as automatically possible.
+        /// </summary>
+        Recovered
     }
 }

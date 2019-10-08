@@ -219,7 +219,7 @@ namespace StreamDb.Internal.DbStructure
                 _storage.Release(ref reader);
             }
         }
-        [CanBeNull]public Page GetPageRaw(int pageId)
+        [CanBeNull]public Page GetPageRaw(int pageId, bool ignoreCrc = false)
         {
             var reader = _storage.AcquireReader();
             try {
@@ -236,7 +236,7 @@ namespace StreamDb.Internal.DbStructure
                 var result = new Page();
                 result.Defrost(new Substream(reader.BaseStream, Page.PageRawSize));
                 result.OriginalPageId = pageId;
-                if (!result.ValidateCrc()) throw new Exception($"CRC failed at page {pageId}");
+                if (!ignoreCrc && !result.ValidateCrc()) throw new Exception($"CRC failed at page {pageId}");
                 return result;
             } finally {
                 _storage.Release(ref reader);
@@ -285,7 +285,7 @@ namespace StreamDb.Internal.DbStructure
                 var pageId = freeList.View.GetNext();
                 if (pageId > 0) { 
                     CommitPage(freeList, false);
-                    var page = GetPageRaw(pageId);
+                    var page = GetPageRaw(pageId, ignoreCrc: true);
                     if (page == null) break;
                     return page;
                 }
@@ -372,6 +372,15 @@ namespace StreamDb.Internal.DbStructure
                 if (loopHash.Contains(current.NextPageId)) throw new Exception("Loop detected in page list.");
                 current = GetPageRaw(current.NextPageId);
             }
+        }
+
+        [CanBeNull] private Page<FreeListPage> TryWalkFreeList([NotNull]Page<FreeListPage> freeLink)
+        {
+            // try to move forward in links
+            if (freeLink.NextPageId > 0) {
+                return GetPageView<FreeListPage>(freeLink.NextPageId) ?? throw new Exception("Free page list chain is broken");
+            }
+            return null;
         }
 
         /// <summary>
@@ -500,6 +509,7 @@ namespace StreamDb.Internal.DbStructure
         /// <summary>
         /// Write a new document to data pages and the index.
         /// Returns new document ID.
+        /// Remember to commit the new document by ID when stable
         /// </summary>
         /// <param name="docDataStream">Stream to use as document source. It will be read from current position to end.</param>
         public Guid WriteDocument(Stream docDataStream)
@@ -525,11 +535,35 @@ namespace StreamDb.Internal.DbStructure
             // add to index
             WriteToIndex(page);
 
-            // TODO: commit journal entries
-
-
             // return ID
             return page.DocumentId;
+        }
+
+        /// <summary>
+        /// Remove page IDs from the free table's journal.
+        /// This should be called after a `WriteDocument` and the storage is flushed.
+        /// </summary>
+        public void CommitDocumentById(Guid docId) {
+            // TODO: get end page from index; walk backwards, unmark from freelist
+            var pageId = GetPageIdFromDocumentId(docId);
+            var page = GetPageRaw(pageId);
+            var freeRoot = GetFreePageList();
+
+            while (page != null) {
+                var chainPage = freeRoot; // reset to root
+
+                while (!chainPage.View.UnmarkJournal(page.OriginalPageId)) { // need to walk the chain
+                    chainPage = TryWalkFreeList(chainPage);
+                    if (chainPage == null) throw new Exception($"Document page id {pageId} was not in the journal");
+                }
+
+                if (chainPage != freeRoot) { // updated the non-root page
+                    CommitPage(chainPage, false);
+                }
+
+                page = WalkPageChain(page);
+            }
+            CommitPage(freeRoot, false);
         }
 
         /// <summary>
@@ -818,6 +852,28 @@ namespace StreamDb.Internal.DbStructure
             }
 
             return count;
+        }
+
+        /// <summary>
+        /// Abandon any unwritten journal pages (they become free pages).
+        /// Returns true if any bad pages found
+        /// </summary>
+        public bool AbandonJournal()
+        {
+            var freeList = GetFreePageList();
+            var found = false;
+            
+            // Walk the free page list
+            while (freeList != null)
+            {
+                var any =  freeList.View.AbandonJournal();
+                if (any) CommitPage(freeList, false);
+                found |= any;
+
+                if (freeList.NextPageId <= 0) break;
+                freeList = GetPageView<FreeListPage>(freeList.NextPageId);
+            }
+            return found;
         }
     }
 }

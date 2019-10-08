@@ -37,6 +37,8 @@ namespace StreamDb.Tests
             var ok = result.Get("successful", out _);
             Assert.That(ok, Is.True, "Fully written document was lost");
 
+            Assert.That(result.StartupState, Is.EqualTo(StartupState.DirtyJournal), "Database did not recognise data loss");
+
             ok = result.Get("failure", out _);
             Assert.That(ok, Is.False, "Partly written document was loaded without an error");
         }
@@ -78,6 +80,7 @@ namespace StreamDb.Tests
 
 
             var result = Database.TryConnect(newStream);
+            Assert.That(result.StartupState, Is.EqualTo(StartupState.DirtyJournal), "Database did not recognise data loss");
 
             result.CalculateStatistics(out var totalPages, out var freePages);
             Console.WriteLine($"Stats before writing: total pages = {totalPages}; free = {freePages}");
