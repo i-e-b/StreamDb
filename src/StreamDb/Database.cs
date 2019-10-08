@@ -145,5 +145,16 @@ namespace StreamDb
         {
             return _pages.SearchPaths(pathPrefix);
         }
+
+        /// <summary>
+        /// Scan the database for statistics.
+        /// </summary>
+        /// <param name="totalPages">The number of pages in storage (based on storage size)</param>
+        /// <param name="freePages">The number of free pages that can be written without increasing storage</param>
+        public void CalculateStatistics(out int totalPages, out int freePages)
+        {
+            totalPages = (int) (_fs.Length / Page.PageRawSize);
+            freePages = _pages.CountFreePages();
+        }
     }
 }

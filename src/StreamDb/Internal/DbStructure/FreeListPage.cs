@@ -94,5 +94,19 @@ namespace StreamDb.Internal.DbStructure
                 _entries[i] = r.ReadInt32();
             }
         }
+
+        /// <summary>
+        /// Scan the page, returning a count of free pages.
+        /// This is for statistics. Use `GetNext` to read a free page index
+        /// </summary>
+        public int Count()
+        {
+            var count = 0;
+            for (int i = 0; i < Capacity; i++)
+            {
+                if (_entries[i] >= 3) count++;
+            }
+            return count;
+        }
     }
 }

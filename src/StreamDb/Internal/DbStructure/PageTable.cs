@@ -785,5 +785,24 @@ namespace StreamDb.Internal.DbStructure
             var lookup = ReadPathIndex();
             return lookup.Search(pathPrefix);
         }
+
+        /// <summary>
+        /// Scan the free page chain, count how many slots are occupied
+        /// </summary>
+        public int CountFreePages()
+        {
+            var count = 0;
+            var freeList = GetFreePageList();
+            
+            // Walk the free page list
+            while (freeList != null)
+            {
+                count += freeList.View.Count();
+                if (freeList.NextPageId <= 0) break;
+                freeList = GetPageView<FreeListPage>(freeList.NextPageId);
+            }
+
+            return count;
+        }
     }
 }
