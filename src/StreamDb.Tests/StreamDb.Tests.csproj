@@ -45,6 +45,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BasicTests.cs" />
+    <Compile Include="FecCodeTests.cs" />
     <Compile Include="Helpers\CutoffStream.cs" />
     <Compile Include="FreeChainTests.cs" />
     <Compile Include="IndexTreeTests.cs" />

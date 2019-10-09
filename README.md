@@ -44,7 +44,7 @@ A minimalist database that uses only Streams as storage, and can survive power l
 A rework of the path index is in order. I think a paged hash table (like the current doc id index) would be better.
 A rework of the page table is also probably needed.
 
-The CRC checks are taking 50% of run time.
+The CRC checks are taking 30% of run time.
 
 For testing, a stream wrapper that stops writing at a random point (but still acts like it's writing). Run that loads of times to fuzz.
 
