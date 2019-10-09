@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using NUnit.Framework;
 using StreamDb.Internal.DbStructure;
 using StreamDb.Internal.Support;
@@ -401,5 +402,28 @@ namespace StreamDb.Tests
             Assert.That((string)result.Get("my/path/3"), Is.EqualTo("value5"));
             Assert.That((string)result.Get("my/path/4"), Is.EqualTo("value6"));
         }
+
+
+        [Test]
+        public void out_of_order_inserts_can_be_recovered ()
+        {
+            // build up a cluster of variants at the end of a common chain
+            var subject = new PathIndex<ByteString>();
+            var ooo = Enumerable.Range(0, 100).ToList().Shuffle() ?? throw new Exception("Setup failed");
+
+            // insert out of order
+            foreach (var i in ooo)
+            {
+                subject.Add($"test/path/{i}", $"{i}");
+            }
+
+            // read back
+            for (int i = 0; i < 100; i++)
+            {
+                var result = subject.Get($"test/path/{i}");
+                Assert.That((string)result, Is.EqualTo($"{i}"), $"Failed to read {i}");
+            }
+        }
+
     }
 }

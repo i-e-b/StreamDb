@@ -86,7 +86,33 @@ namespace StreamDb.Tests
 
         [Test]
         public void when_a_document_crashes_during_an_update_the_previous_version_is_still_available () {
-            Assert.Fail("NYI");
+            var rnd = new Random();
+
+            // Cause a power-off like failure when writing a document.
+            // We simulate this with a custom stream
+            var baseStream = new MemoryStream();
+            var stream = new CutoffStream(baseStream);
+
+            var subject = Database.TryConnect(stream);
+
+            // Write a good document, then a failure
+            subject.WriteDocument("repeat", MakeTestDocument());
+            stream.CutoffAfter(rnd.Next(10, 900));
+            subject.WriteDocument("repeat", MakeTestDocument());
+
+            Assert.That(stream.HasCutoff(), Is.True, "Failed to break output stream");
+
+            // Load a new database from the truncated data
+            baseStream.Rewind();
+            var rawResult = baseStream.ToArray();
+            var newStream = new MemoryStream(rawResult);
+
+            var result = Database.TryConnect(newStream);
+            var ok = result.Get("repeat", out var resultData);
+            Assert.That(ok, Is.True, "Fully written document was lost");
+
+            var temp = new MemoryStream();
+            resultData.CopyTo(temp); // this will cause each page's CRC to be tested.
         }
 
         [Test]
@@ -97,7 +123,7 @@ namespace StreamDb.Tests
 
                 var dispatcher = Dispatch<int>.CreateDefaultMultithreaded("MyTask", threadCount: 10);
 
-                const int rounds = 50;
+                const int rounds = 50; // note -- PathIndex fails somewhere around 110, it starts reading off the end of the stream
                 for (int i = 0; i < rounds; i++) dispatcher.AddWork(i);
 
                 dispatcher.AddConsumer(i=>{
@@ -120,7 +146,7 @@ namespace StreamDb.Tests
                 var result = Database.TryConnect(new MemoryStream(rawData));
 
                 // TODO: writing to the path lookup is the weakpoint here.
-                Console.WriteLine(string.Join(", ",result.Search("test")));
+                Console.WriteLine(string.Join(", ", result.Search("test")));
 
                 var failed = new List<int>();
 

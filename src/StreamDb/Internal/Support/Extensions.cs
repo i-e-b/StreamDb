@@ -1,5 +1,8 @@
-﻿using System.IO;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Text;
+using JetBrains.Annotations;
 
 namespace StreamDb.Internal.Support
 {
@@ -37,6 +40,25 @@ namespace StreamDb.Internal.Support
             if (s == null) return null;
             s.Seek(0, SeekOrigin.Begin);
             return s;
+        }
+
+        [NotNull]private static readonly Random rnd = new Random();  
+
+        /// <summary>
+        /// Randomise the order of the supplied list.
+        /// </summary>
+        public static IList<T> Shuffle<T>(this IList<T> list)  
+        {  
+            if (list == null) return null;
+            var n = list.Count;  
+            while (n > 1) {  
+                n--;  
+                var k = rnd.Next(n + 1);  
+                var value = list[k];  
+                list[k] = list[n];  
+                list[n] = value;  
+            }
+            return list;
         }
     }
 }

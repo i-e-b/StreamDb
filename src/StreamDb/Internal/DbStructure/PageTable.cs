@@ -504,7 +504,7 @@ namespace StreamDb.Internal.DbStructure
             Page page = null;
             var buf = new byte[Page.PageDataCapacity];
             int bytes;
-            while ((bytes = docDataStream.Read(buf,0,buf.Length)) > 0) { // TODO: optimise this now we've switched to streams
+            while ((bytes = docDataStream.Read(buf,0,buf.Length)) > 0) {
                 var next = ChainPage(page, new MemoryStream(buf), bytes);
 
                 if (next.PageType == PageType.Invalid) { // first page
@@ -671,7 +671,7 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         public Guid BindPathToDocument(string path, Guid docId)
         {
-            //lock (_newPageLock)
+            lock (_newPageLock)
             {
                 var lookup = ReadPathIndex();
 

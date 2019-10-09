@@ -60,27 +60,29 @@ namespace StreamDb
         [NotNull]private readonly object _pathWriteLock = new object();
 
         /// <summary>
-        /// Write a document to the given path
+        /// Write a document to the given path. If an existing document uses this path, it will be deleted.
         /// </summary>
         /// <param name="path">Path that can be used with `Get` and `Search` operations to recover this document</param>
         /// <param name="data">Stream containing document data. It will be read from current position to end.</param>
         public Guid WriteDocument(string path, Stream data)
         {
-            var id = _pages.WriteDocument(data);
-            if (id == Guid.Empty) throw new Exception("Failed to write document data");
-            Guid oldId;
+            // TODO: would be better to improve the path index rather than lock it.
+            lock (_pathWriteLock)
+            {
+                var id = _pages.WriteDocument(data);
+                if (id == Guid.Empty) throw new Exception("Failed to write document data");
 
-            lock (_pathWriteLock) {
-                // TODO: would be better to improve the path index rather than lock it.
-                oldId = _pages.BindPathToDocument(path, id);
+                var oldId = _pages.BindPathToDocument(path, id);
+
+                if (oldId != Guid.Empty && oldId != id)
+                {
+                    // replaced an existing document
+                    // TODO: check there are no other paths bound
+                    _pages.DeleteDocument(oldId);
+                }
+                return id;
             }
 
-            if (oldId != Guid.Empty && oldId != id) {
-                // replaced an existing document
-                // TODO: check there are no other paths bound
-                _pages.DeleteDocument(oldId);
-            }
-            return id;
         }
 
         /// <summary>
