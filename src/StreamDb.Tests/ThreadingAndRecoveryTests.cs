@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using DispatchSharp;
@@ -90,8 +91,47 @@ namespace StreamDb.Tests
 
         [Test]
         public void writing_documents_in_multiple_threads_works_correctly () {
-            // Note: the path index is probably trickiest
-            Assert.Fail("NYI");
+            using (var ms = new MemoryStream())
+            {
+                var subject = Database.TryConnect(ms);
+
+                var dispatcher = Dispatch<int>.CreateDefaultMultithreaded("MyTask", threadCount: 10);
+
+                const int rounds = 50;
+                for (int i = 0; i < rounds; i++) dispatcher.AddWork(i);
+
+                dispatcher.AddConsumer(i=>{
+                    var j = (5 * i) % rounds;
+                    Console.Write($"W{i},R{j}; ");
+                    // ReSharper disable AccessToDisposedClosure
+                    subject.WriteDocument($"test/data-path/{i}", MakeTestDocument());
+                    subject.Get($"test/data-path/{j}", out _);
+                    // ReSharper restore AccessToDisposedClosure
+                });
+
+                dispatcher.Start();
+                dispatcher.WaitForEmptyQueueAndStop();
+
+                subject.Flush();
+                ms.Rewind();
+                var rawData = ms.ToArray();
+
+                // Check we can still load and read the database
+                var result = Database.TryConnect(new MemoryStream(rawData));
+
+                // TODO: writing to the path lookup is the weakpoint here.
+                Console.WriteLine(string.Join(", ",result.Search("test")));
+
+                var failed = new List<int>();
+
+                for (int i = 0; i < rounds; i++)
+                {
+                    var ok = result.Get($"test/data-path/{i}", out _);
+                    if (!ok) failed.Add(i);
+                }
+
+                Assert.That(failed, Is.Empty, "Failed lookups: " + string.Join(", ", failed));
+            }
         }
 
         [Test]

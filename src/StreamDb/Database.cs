@@ -57,6 +57,8 @@ namespace StreamDb
         /// </summary>
         public void Dispose() { _fs.Flush(); _fs.Dispose(); }
 
+        [NotNull]private readonly object _pathWriteLock = new object();
+
         /// <summary>
         /// Write a document to the given path
         /// </summary>
@@ -66,7 +68,12 @@ namespace StreamDb
         {
             var id = _pages.WriteDocument(data);
             if (id == Guid.Empty) throw new Exception("Failed to write document data");
-            var oldId = _pages.BindPathToDocument(path, id);
+            Guid oldId;
+
+            lock (_pathWriteLock) {
+                // TODO: would be better to improve the path index rather than lock it.
+                oldId = _pages.BindPathToDocument(path, id);
+            }
 
             if (oldId != Guid.Empty && oldId != id) {
                 // replaced an existing document
@@ -99,7 +106,10 @@ namespace StreamDb
         /// <param name="newPath">path that can be used for `Get` and `Search` operations</param>
         public Guid BindToPath(Guid documentId, string newPath)
         {
-            return _pages.BindPathToDocument(newPath, documentId);
+            lock (_pathWriteLock)
+            {
+                return _pages.BindPathToDocument(newPath, documentId);
+            }
         }
 
         /// <summary>
@@ -155,6 +165,14 @@ namespace StreamDb
         {
             totalPages = (int) (_fs.Length / Page.PageRawSize);
             freePages = _pages.CountFreePages();
+        }
+
+        /// <summary>
+        /// Attempt to synchronously flush the underlying storage
+        /// </summary>
+        public void Flush()
+        {
+            _fs.Flush();
         }
     }
 }

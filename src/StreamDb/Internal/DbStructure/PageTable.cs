@@ -564,6 +564,7 @@ namespace StreamDb.Internal.DbStructure
 
         /// <summary>
         /// Search the index for a page ID. Returns -1 if not found.
+        /// Returns only the most recent version
         /// </summary>
         public int GetPageIdFromDocumentId(Guid docId) {
             var index = GetIndexPageList();
@@ -586,17 +587,43 @@ namespace StreamDb.Internal.DbStructure
         }
 
         /// <summary>
+        /// Search the index for a versioned page ID. Returns null if not found.
+        /// </summary>
+        public VersionedLink GetDocumentVersions(Guid docId) {
+            var index = GetIndexPageList();
+
+            // Walk the index page list
+            while (true)
+            {
+                var found = index.View.Search(docId, out var version);
+                if (found) { return version; }
+
+                // Failed to find, walk the chain
+                index = WalkIndexList(index, shouldAdd: false);
+                if (index == null) return null; // not found
+            }
+        }
+
+        /// <summary>
         /// Present a stream to read from a document, recovered by ID.
         /// Returns null if the document is not found.
         /// </summary>
         [CanBeNull]public Stream ReadDocument(Guid docId)
         {
-            // walk the index page list, try to find an end page for the given ID.
-            // then skip to the start, and wrap in a page-reading stream implementation
+            var version = GetDocumentVersions(docId);
+            if (version == null) return null; // not found
 
-            var pageId = GetPageIdFromDocumentId(docId);
-            if (pageId < 1) return null; // don't read invalid or root page
-            return new PageTableStream(this, GetPageRaw(pageId), false);
+            if (version.TryGetLink(0, out var pageId)) {
+                try {
+                    return new PageTableStream(this, GetPageRaw(pageId), false);
+                } catch {
+                    if (version.TryGetLink(1, out pageId)) {
+                        return new PageTableStream(this, GetPageRaw(pageId), false);
+                    }
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -644,21 +671,21 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         public Guid BindPathToDocument(string path, Guid docId)
         {
-            lock (_newPageLock)
+            //lock (_newPageLock)
             {
                 var lookup = ReadPathIndex();
 
                 var id = SerialGuid.Wrap(docId);
                 var old = lookup.Add(path, id);
 
+                // write back changes
+                CommitPathIndexCache();
+
                 if (old?.Value == docId)
                 {
                     // no change
                     return Guid.Empty;
                 }
-
-                // write back changes
-                CommitPathIndexCache();
 
                 return old?.Value ?? Guid.Empty;
             }
