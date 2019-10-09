@@ -28,11 +28,11 @@ A minimalist database that uses only Streams as storage, and can survive power l
 
 ## To-do:
 
+* [ ] Try replacing CRC with some kind of FEC code <-- going to experiment here
 * [ ] Improve page structure to support more robust versioning
 * [ ] Improve path index to support multiple versions
 * [ ] Better free-list structure (more thread safe, better balancing)
-* [ ] Thread safety tests
-* [ ] Try replacing CRC with some kind of FEC code
+* [x] Thread safety tests
 * [x] Complete database entry point stuff
 * [x] Re-write path lookup serialisation, so that it's append only
 * [x] Update path lookup pages to append data
@@ -40,6 +40,9 @@ A minimalist database that uses only Streams as storage, and can survive power l
 * [x] Improve data transport to reduce copying and GC
 
 ## Notes:
+
+A rework of the path index is in order. I think a paged hash table (like the current doc id index) would be better.
+A rework of the page table is also probably needed.
 
 The CRC checks are taking 50% of run time.
 
