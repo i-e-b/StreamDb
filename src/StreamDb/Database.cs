@@ -136,6 +136,19 @@ namespace StreamDb
             _pages.RemoveFromIndex(documentId);
             _pages.DeleteDocument(documentId);
         }
+        
+        /// <summary>
+        /// Delete a document from the database, and unbind all paths to it.
+        /// If the document does not exist, the request will be silently ignored.
+        /// </summary>
+        /// <param name="path">Any path that the document is bound to</param>
+        public void Delete(string path)
+        {
+            var id = _pages.GetDocumentIdByPath(path);
+            _pages.DeletePathsForDocument(id);
+            _pages.RemoveFromIndex(id);
+            _pages.DeleteDocument(id);
+        }
 
         /// <summary>
         /// Remove a single path binding for a document.
