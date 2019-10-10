@@ -161,6 +161,36 @@ namespace StreamDb.Tests
                 Assert.That(found, Is.EqualTo("original/path, new/path/same/document"));
             }
         }
+        
+        [Test]
+        public void can_bind_a_large_number_of_paths () {
+            using (var ms = new MemoryStream())
+            {
+                var subject = Database.TryConnect(ms);
+
+                var docId = subject.WriteDocument("original/path", MakeTestDocument());
+
+                // Bind a load of paths
+                for (int i = 0; i < 250; i++)
+                {
+                    subject.BindToPath(docId, $"new/path/number_{i}");
+                }
+
+                // read back
+                var found1 = subject.ListPaths(docId).ToList();
+                Assert.That(found1.Count, Is.EqualTo(251), "Paths were not recorded to cache");
+
+                // TODO: serialising large sets is failing. Maybe *not* a threading issue
+                // serialise
+                ms.Rewind();
+                var raw = ms.ToArray();
+                var result = Database.TryConnect(new MemoryStream(raw));
+
+                // read back
+                var found = result.ListPaths(docId).ToList();
+                Assert.That(found.Count, Is.EqualTo(251), "Paths were not recorded to storage");
+            }
+        }
 
         [Test]
         public void search_for_paths_with_a_path_prefix () {

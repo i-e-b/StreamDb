@@ -8,6 +8,28 @@ using StreamDb.Internal.Support;
 
 namespace StreamDb.Internal.DbStructure
 {
+    /*
+     
+        Need a new way of doing this.
+        Requirements:
+
+        Lookup:
+        - Search for real paths given a prefix
+        - Link from path to document ID
+        - Link an ID to more than one path
+        - Remove a path (or unlink ID from it)
+        - Search is fast
+        
+        Storage:
+        - Minimal change to data pages per link/unlink
+        - Isolation of data changes to a single page per link/unlink (fewer page commits, better threading)
+        - Changes are versioned, so a partial write doesn't break anything.
+
+        */
+
+
+
+
     /// <summary>
     /// Provides Path->ID indexing
     /// </summary>

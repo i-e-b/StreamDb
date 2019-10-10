@@ -123,7 +123,7 @@ namespace StreamDb.Tests
 
                 var dispatcher = Dispatch<int>.CreateDefaultMultithreaded("MyTask", threadCount: 10);
 
-                const int rounds = 50; // note -- PathIndex fails somewhere around 110, it starts reading off the end of the stream
+                const int rounds = 50;
                 for (int i = 0; i < rounds; i++) dispatcher.AddWork(i);
 
                 dispatcher.AddConsumer(i=>{
@@ -145,7 +145,6 @@ namespace StreamDb.Tests
                 // Check we can still load and read the database
                 var result = Database.TryConnect(new MemoryStream(rawData));
 
-                // TODO: writing to the path lookup is the weakpoint here.
                 Console.WriteLine(string.Join(", ", result.Search("test")));
 
                 var failed = new List<int>();

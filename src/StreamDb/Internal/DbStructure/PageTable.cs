@@ -757,7 +757,15 @@ namespace StreamDb.Internal.DbStructure
             var root = ReadRoot();
             var pathBaseId = root.GetPathLookupBase();
             
-            var source = new PageTableStream(this, GetPageRaw(pathBaseId), false);
+            // path index is forward-writing, so we need to find the end...
+            var page = GetPageRaw(pathBaseId);
+            while (page?.NextPageId > 0) {
+                page = WalkPageChain(page);
+            }
+            if (page == null) throw new Exception("Lost path lookup chain");
+
+            // load as a stream
+            var source = new PageTableStream(this, page, false);
 
             _pathIndexCache = PathIndex<SerialGuid>.ReadFrom(source);
 
