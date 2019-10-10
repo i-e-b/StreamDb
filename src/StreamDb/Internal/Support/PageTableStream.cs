@@ -19,14 +19,27 @@ namespace StreamDb.Internal.Support
         /// Wrap a page chain in a stream reader.
         /// </summary>
         /// <param name="parent">PageTable to be used for traversal and reading</param>
-        /// <param name="endPage">The LAST page of the page chain</param>
+        /// <param name="endPage">The LAST page of the page chain. If a non-last page is given, the page table will be scanned to find it.</param>
         /// <param name="enableWriting">If true, writing to the stream is enabled. This is for internal use only.</param>
         public PageTableStream(PageTable parent, Page endPage, bool enableWriting)
         {
             _requestedOffset = 0;
             _parent = parent ?? throw new Exception("Tried to stream from a disconnected page (PageTable parent is required)");
             _endPage = endPage ?? throw new Exception("Tried to stream from a null page");
+            if (_endPage.NextPageId > 0) _endPage = GetEndPage(_endPage);
             _enableWriting = enableWriting;
+        }
+
+        
+        [NotNull]private Page GetEndPage(Page page)
+        {
+            while (page?.NextPageId > 0)
+            {
+                page = _parent.WalkPageChain(page);
+            }
+
+            if (page == null) throw new Exception("Found a broken page chain when preparing a PageTableStream.");
+            return page;
         }
 
         public override void Flush() { }
@@ -50,12 +63,12 @@ namespace StreamDb.Internal.Support
             var read = 0;
             while (remaining > 0)
             {
-                var data = page.GetData();
+                var data = page._data;
 
                 var chunkEnd = Math.Min(page.PageDataLength, chunkOffset + remaining);
                 for (int i = chunkOffset; i < chunkEnd; i++)
                 {
-                    buffer[read+offset] = data[i];
+                    buffer[read+offset] = data[Page.PageHeadersSize + i];
                     read++;
                     remaining--;
                     _requestedOffset++;

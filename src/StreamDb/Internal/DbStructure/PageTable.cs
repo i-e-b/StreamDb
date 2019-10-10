@@ -725,7 +725,6 @@ namespace StreamDb.Internal.DbStructure
             using (var newPathData = _pathIndexCache.Freeze())
             {
                 var raw = GetPageRaw(ReadRoot().GetPathLookupBase());
-                if (raw == null) throw new Exception("Path lookup pages lost");
                 var existingDoc = new PageTableStream(this, raw, true);
 
                 if (existingDoc.Length == newPathData.Length) return; // no changes
@@ -759,10 +758,6 @@ namespace StreamDb.Internal.DbStructure
             
             // path index is forward-writing, so we need to find the end...
             var page = GetPageRaw(pathBaseId);
-            while (page?.NextPageId > 0) {
-                page = WalkPageChain(page);
-            }
-            if (page == null) throw new Exception("Lost path lookup chain");
 
             // load as a stream
             var source = new PageTableStream(this, page, false);
@@ -771,6 +766,7 @@ namespace StreamDb.Internal.DbStructure
 
             return _pathIndexCache;
         }
+
 
         /// <summary>
         /// Delete a document page chain. Does NOT directly affect the path index or document index

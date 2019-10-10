@@ -319,10 +319,8 @@ namespace StreamDb.Internal.DbStructure
         /// <summary>
         /// Get a COPY of the pages's content data. Does not include headers.
         /// </summary>
-        /// <returns></returns>
-        [NotNull]public byte[] GetData()
+        [NotNull]public byte[] GetContentCopy()
         {
-            // TODO: split the header and data arrays internally to reduce copying?
             return Slice(PAGE_DATA, PageDataCapacity);
         }
 

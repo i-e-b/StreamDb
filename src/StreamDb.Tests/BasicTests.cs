@@ -166,21 +166,28 @@ namespace StreamDb.Tests
         public void can_bind_a_large_number_of_paths () {
             using (var ms = new MemoryStream())
             {
+                const int rounds = 250;
+
                 var subject = Database.TryConnect(ms);
 
                 var docId = subject.WriteDocument("original/path", MakeTestDocument());
 
+                var preLen = ms.Length;
+
                 // Bind a load of paths
-                for (int i = 0; i < 250; i++)
+                for (int i = 0; i < rounds; i++)
                 {
                     subject.BindToPath(docId, $"new/path/number_{i}");
                 }
 
+                var postLen = ms.Length;
+
+                Console.WriteLine($"Storage for {rounds} similar paths took {(postLen - preLen)/1024}KB. Total DB size = {postLen/1024}KB");
+
                 // read back
                 var found1 = subject.ListPaths(docId).ToList();
-                Assert.That(found1.Count, Is.EqualTo(251), "Paths were not recorded to cache");
+                Assert.That(found1.Count, Is.EqualTo(rounds+1), "Paths were not recorded to cache");
 
-                // TODO: serialising large sets is failing. Maybe *not* a threading issue
                 // serialise
                 ms.Rewind();
                 var raw = ms.ToArray();
@@ -188,7 +195,7 @@ namespace StreamDb.Tests
 
                 // read back
                 var found = result.ListPaths(docId).ToList();
-                Assert.That(found.Count, Is.EqualTo(251), "Paths were not recorded to storage");
+                Assert.That(found.Count, Is.EqualTo(rounds+1), "Paths were not recorded to storage");
             }
         }
 
