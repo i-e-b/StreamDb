@@ -114,7 +114,6 @@ namespace StreamDb.Internal.DbStructure
             */
 
         [NotNull] protected internal readonly byte[] _data;
-        //[NotNull] protected internal readonly byte[] _data;
 
         public Page() { _data = new byte[PageRawSize]; }
 
@@ -157,7 +156,7 @@ namespace StreamDb.Internal.DbStructure
         /// <summary>
         /// previous page in the document's page chain ( -1 if this is the start )
         /// </summary>
-        public int PrevPageId { 
+        public int PrevPageId {
             get { return BitConverter.ToInt32(_data, PREV_LNK); } 
             set { Unslice(BitConverter.GetBytes(value), PREV_LNK); }
         }
@@ -330,6 +329,14 @@ namespace StreamDb.Internal.DbStructure
         public byte GetByte(int offset)
         {
             return _data[PAGE_DATA + offset];
+        }
+
+        /// <summary>
+        /// Return the entire page data (headers and body). No copying is done.
+        /// </summary>
+        [NotNull]public byte[] RawData()
+        {
+            return _data;
         }
     }
 }

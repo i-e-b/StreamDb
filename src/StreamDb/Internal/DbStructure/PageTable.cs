@@ -290,9 +290,17 @@ namespace StreamDb.Internal.DbStructure
             {
                 var pageId = freeList.View.GetNext();
                 if (pageId > 0) { 
-                    CommitPage(freeList);
+                    CommitPage(freeList); // remove our page from the free list
                     var page = GetPageRaw(pageId, ignoreCrc: true);
                     if (page == null) break;
+
+                    // Clear data
+                    page.NextPageId = Page.NextIdForEmptyPage;
+                    page.PrevPageId = -1;
+                    page.DocumentId = Page.FreePageGuid;
+                    page.DocumentSequence = 0;
+                    page.PageType = PageType.Invalid;
+
                     return page;
                 }
                 if (freeList.NextPageId <= 0) break;
@@ -636,7 +644,6 @@ namespace StreamDb.Internal.DbStructure
         {
             if (src == null) return null;
 
-            // TODO:
             // We should be able to walk around the pages relatively efficiently, assuming both links are good.
             // From any position, we can
             // 1. Jump to the start and walk forward
@@ -724,6 +731,8 @@ namespace StreamDb.Internal.DbStructure
 
             using (var newPathData = _pathIndexCache.Freeze())
             {
+                // Incremental form
+                /*
                 var raw = GetPageRaw(ReadRoot().GetPathLookupBase());
                 var existingDoc = new PageTableStream(this, raw, true);
 
@@ -733,7 +742,25 @@ namespace StreamDb.Internal.DbStructure
                 // Write only the new data to the stream
                 newPathData.Seek(existingDoc.Length - 1, SeekOrigin.Begin);
                 existingDoc.Seek(existingDoc.Length - 1, SeekOrigin.Begin);
-                newPathData.CopyTo(existingDoc); // writing to this stream commits the pages
+                newPathData.CopyTo(existingDoc); // writing to this stream commits the pages*/
+
+                // Replacement form
+                var raw = GetFreePage();
+                raw.PageType = PageType.PathLookup;
+                raw.DocumentId = Page.PathLookupGuid;
+                raw.UpdateCRC();
+                CommitPage(raw);
+
+                var newDoc = new PageTableStream(this, raw, true);
+                newPathData.Rewind();
+                newPathData.CopyTo(newDoc);
+
+                var root = ReadRoot();
+                root.PathLookupLink.WriteNewLink(newDoc.GetEndPageId(), out var expired);
+                if (expired > 3){
+                    DeletePageChain(expired);
+                }
+                CommitRootCache();
             }
         }
 

@@ -10,7 +10,7 @@ namespace StreamDb.Internal.Support
     /// </summary>
     public class PageTableStream : Stream {
         [NotNull]private readonly PageTable _parent;
-        [NotNull]private readonly Page _endPage;
+        [NotNull]private Page _endPage;
         [CanBeNull]private Page _mostRecentPage; // used to reduce scanning
         private readonly bool _enableWriting;
         private long _requestedOffset;
@@ -63,7 +63,7 @@ namespace StreamDb.Internal.Support
             var read = 0;
             while (remaining > 0)
             {
-                var data = page._data;
+                var data = page.RawData();
 
                 var chunkEnd = Math.Min(page.PageDataLength, chunkOffset + remaining);
                 for (int i = chunkOffset; i < chunkEnd; i++)
@@ -175,7 +175,10 @@ namespace StreamDb.Internal.Support
 
                 // extend page chain
                 var next = _parent.WalkPageChain(page);
-                if (next == null) next = _parent.ChainPage(page, null, -1);
+                if (next == null) {
+                    next = _parent.ChainPage(page, null, -1);
+                    _endPage = next;
+                }
                 page = next;
             }
             _mostRecentPage = page;
@@ -196,5 +199,10 @@ namespace StreamDb.Internal.Support
 
         /// <inheritdoc />
         public override long Position { get { return _requestedOffset; } set { Seek(value, SeekOrigin.Begin); } }
+
+        public int GetEndPageId()
+        {
+            return _endPage.OriginalPageId;
+        }
     }
 }

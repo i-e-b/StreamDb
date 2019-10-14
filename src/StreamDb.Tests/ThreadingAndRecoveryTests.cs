@@ -26,7 +26,12 @@ namespace StreamDb.Tests
             // Write a good document, then a failure
             subject.WriteDocument("successful", MakeTestDocument());
             stream.CutoffAfter(rnd.Next(10, 900));
-            subject.WriteDocument("failure", MakeTestDocument());
+            try {
+                subject.WriteDocument("failure", MakeTestDocument());
+            }
+            catch {
+                // ignore
+            }
 
             Assert.That(stream.HasCutoff(), Is.True, "Failed to break output stream");
 
@@ -98,7 +103,11 @@ namespace StreamDb.Tests
             // Write a good document, then a failure
             subject.WriteDocument("repeat", MakeTestDocument());
             stream.CutoffAfter(rnd.Next(10, 900));
-            subject.WriteDocument("repeat", MakeTestDocument());
+            try {
+                subject.WriteDocument("repeat", MakeTestDocument());
+            } catch {
+                // Ignore
+            }
 
             Assert.That(stream.HasCutoff(), Is.True, "Failed to break output stream");
 
