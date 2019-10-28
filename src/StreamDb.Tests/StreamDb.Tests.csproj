@@ -54,6 +54,7 @@
     <Compile Include="PathIndexingTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ThreadingAndRecoveryTests.cs" />
+    <Compile Include="UkkonenSuffixTreeTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

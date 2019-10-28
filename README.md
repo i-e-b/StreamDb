@@ -15,9 +15,10 @@ A minimalist database that uses only Streams as storage, and can survive power l
 ## Goals:
 
 1. Be reliable (specifically, don't corrupt the database if the host process crashes)
-2. No 3rd party dependencies, run in most basic C# environment possible
+2. No 3rd party dependencies, run in most basic C# environment possible (i.e. .Net Standard)
 3. Be reasonably fast
 4. Don't waste too much disk space (i.e. re-use deleted pages and very old versions)
+	4.a. It's ok to waste some space if it helps reliability
 5. Small code
 
 ## Non Goals:
@@ -28,18 +29,21 @@ A minimalist database that uses only Streams as storage, and can survive power l
 
 ## To-do:
 
-A rework of the page table class is probably needed.
+Needs a complete rework, now I've learned a bit.
 
-* [ ] Improve path index to support multiple versions
-* [ ] Improve page structure to support more robust versioning
-* [ ] Better free-list structure (more thread safe, better balancing)
-* [ ] Try replacing CRC with some kind of FEC code
-* [x] Thread safety tests
-* [x] Complete database entry point stuff
-* [x] Re-write path lookup serialisation, so that it's append only
-* [x] Update path lookup pages to append data
-* [x] Support partly-full pages at the page header level
-* [x] Improve data transport to reduce copying and GC
+
+# Version 2
+
+## Plan
+
+There needs to be a much stronger abstraction between the page bits and the documents. The writable `PageTableStream` should
+be made a *lot* more robust, and form the heart of that.
+
+The `Page<T>` thing needs to die.
+
+How much can be boil down to a really good free-list implementation? Should we use it entirely -- put the next few off-the-end pages into it?
+
+Should I separate the page header data from the content data?
 
 ## Notes:
 

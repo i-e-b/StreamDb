@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using NUnit.Framework;
+using StreamDb.Internal.Core;
 using StreamDb.Internal.DbStructure;
 
 // ReSharper disable PossibleNullReferenceException

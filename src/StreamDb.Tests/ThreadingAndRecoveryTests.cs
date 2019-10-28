@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using DispatchSharp;
 using NUnit.Framework;
@@ -21,7 +22,7 @@ namespace StreamDb.Tests
             var baseStream = new MemoryStream();
             var stream = new CutoffStream(baseStream);
 
-            var subject = Database.TryConnect(stream);
+            var subject = Database_OLD.TryConnect(stream);
 
             // Write a good document, then a failure
             subject.WriteDocument("successful", MakeTestDocument());
@@ -40,7 +41,7 @@ namespace StreamDb.Tests
             var rawResult = baseStream.ToArray();
             var newStream = new MemoryStream(rawResult);
 
-            var result = Database.TryConnect(newStream);
+            var result = Database_OLD.TryConnect(newStream);
             var ok = result.Get("successful", out _);
             Assert.That(ok, Is.True, "Fully written document was lost");
 
@@ -98,7 +99,7 @@ namespace StreamDb.Tests
             var baseStream = new MemoryStream();
             var stream = new CutoffStream(baseStream);
 
-            var subject = Database.TryConnect(stream);
+            var subject = Database_OLD.TryConnect(stream);
 
             // Write a good document, then a failure
             subject.WriteDocument("repeat", MakeTestDocument());
@@ -116,7 +117,7 @@ namespace StreamDb.Tests
             var rawResult = baseStream.ToArray();
             var newStream = new MemoryStream(rawResult);
 
-            var result = Database.TryConnect(newStream);
+            var result = Database_OLD.TryConnect(newStream);
             var ok = result.Get("repeat", out var resultData);
             Assert.That(ok, Is.True, "Fully written document was lost");
 
@@ -128,7 +129,7 @@ namespace StreamDb.Tests
         public void writing_documents_in_multiple_threads_works_correctly () {
             using (var ms = new MemoryStream())
             {
-                var subject = Database.TryConnect(ms);
+                var subject = Database_OLD.TryConnect(ms);
 
                 var dispatcher = Dispatch<int>.CreateDefaultMultithreaded("MyTask", threadCount: 10);
 
@@ -152,7 +153,7 @@ namespace StreamDb.Tests
                 var rawData = ms.ToArray();
 
                 // Check we can still load and read the database
-                var result = Database.TryConnect(new MemoryStream(rawData));
+                var result = Database_OLD.TryConnect(new MemoryStream(rawData));
 
                 Console.WriteLine(string.Join(", ", result.Search("test")));
 
@@ -173,7 +174,7 @@ namespace StreamDb.Tests
             using (var doc = MakeTestDocument())
             using (var ms = new MemoryStream())
             {
-                var subject = Database.TryConnect(ms);
+                var subject = Database_OLD.TryConnect(ms);
 
                 Console.WriteLine("Writing doc");
                 doc.Seek(0, SeekOrigin.Begin);
@@ -195,10 +196,69 @@ namespace StreamDb.Tests
             }
         }
 
-        private static bool ShouldWait(Thread a)
-        {
-            return (a.ThreadState == ThreadState.Running) || (a.ThreadState == ThreadState.Unstarted);
+
+
+        public class IEDP {
+            public delegate int GetNextPage();
+
+            private volatile GetNextPage _pageDelegate;
+
+            public IEDP()
+            {
+                i = 0;
+                _pageDelegate = SelfPageDelegate;
+            }
+
+            public int TryGetNextPage() {
+                GetNextPage act = null;
+
+                while (act == null) {
+                    act = Interlocked.Exchange(ref _pageDelegate, null);
+                }
+                try {
+                    return act();
+                } finally {
+                    var old = Interlocked.Exchange(ref _pageDelegate, act);
+                    if (old != null) throw new Exception("Interlock failed in IEDP");
+                }
+            }
+
+            private int i;
+            private int SelfPageDelegate()
+            {
+                return i++;
+            }
         }
+
+
+        [Test]
+        public void interlock_exchange_delegate_pointer ()
+        {
+            var subject = new IEDP();
+            var switches = new bool[500];
+
+            var dispatcher = Dispatch<int>.CreateDefaultMultithreaded($"TEST: {nameof(interlock_exchange_delegate_pointer)}", threadCount: 10);
+            for (int i = 0; i < 500; i++) dispatcher.AddWork(i);
+
+            dispatcher.AddConsumer(i=>{
+                Thread.Sleep(i%20);
+                var x = subject.TryGetNextPage();
+                Console.Write($"{i}=>{x}, ");
+                switches[x] = true;
+            });
+
+            dispatcher.Start();
+            dispatcher.WaitForEmptyQueueAndStop(TimeSpan.FromSeconds(10));
+
+            Assert.That(switches.All(v=>v), Is.True, "Not all switches were set");
+
+
+            // Thought... keep a pool of about 32 slots that we keep free page indexes in. (that's about 128kb worth)
+            // Each requester goes through the IEDP to get a number from 0..31, and pulls the page from there.
+            // If there isn't a page in our slot, we hit the slow path and rebuild the slots.
+        }
+
+
 
         /// <summary>
         /// Makes a stream with 10kb of random data

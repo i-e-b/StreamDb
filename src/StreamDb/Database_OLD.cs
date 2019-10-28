@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using JetBrains.Annotations;
-using StreamDb.Internal.DbStructure;
+using StreamDb.Internal.Core;
 
 namespace StreamDb
 {
@@ -21,12 +21,12 @@ namespace StreamDb
     /// The database is designed to allow for rapid connect/disconnect cycles to support multiple access.
     /// It should also be 100% thread safe within a single process.
     /// </remarks>
-    public class Database : IDisposable
+    public class Database_OLD : IDisposable
     {
         [NotNull]   private readonly Stream       _fs;
         [NotNull]   private readonly PageTable    _pages;
 
-        private Database(Stream fs)
+        private Database_OLD(Stream fs)
         {
             _fs = fs ?? throw new ArgumentNullException(nameof(fs));
             _pages = new PageTable(_fs);
@@ -39,7 +39,7 @@ namespace StreamDb
         /// If an empty stream is provided (length == 0), it will be initialised. Otherwise it must be
         /// a valid storage stream.
         /// </summary>
-        public static Database TryConnect(Stream storage)
+        public static Database_OLD TryConnect(Stream storage)
         {
             if (storage == null || !storage.CanSeek || !storage.CanRead) throw new ArgumentException("Storage stream must support seeking and reading", nameof(storage));
 
@@ -49,7 +49,7 @@ namespace StreamDb
                 storage.Seek(0, SeekOrigin.Begin);
             }
 
-            return new Database(storage);
+            return new Database_OLD(storage);
         }
 
         /// <summary>

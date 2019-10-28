@@ -1,15 +1,14 @@
 ﻿using System;
 using System.IO;
 using JetBrains.Annotations;
-using StreamDb.Internal.DbStructure;
 
-namespace StreamDb.Internal.Support
+namespace StreamDb.Internal.Core
 {
     /// <summary>
     /// Stream implementation that reads from a document chain in a PageTable
     /// </summary>
     public class PageTableStream : Stream {
-        [NotNull]private readonly PageTable _parent;
+        [NotNull]private readonly PageTableCore _parent;
         [NotNull]private Page _endPage;
         [CanBeNull]private Page _mostRecentPage; // used to reduce scanning
         private readonly bool _enableWriting;
@@ -21,7 +20,7 @@ namespace StreamDb.Internal.Support
         /// <param name="parent">PageTable to be used for traversal and reading</param>
         /// <param name="endPage">The LAST page of the page chain. If a non-last page is given, the page table will be scanned to find it.</param>
         /// <param name="enableWriting">If true, writing to the stream is enabled. This is for internal use only.</param>
-        public PageTableStream(PageTable parent, Page endPage, bool enableWriting)
+        public PageTableStream(PageTableCore parent, Page endPage, bool enableWriting)
         {
             _requestedOffset = 0;
             _parent = parent ?? throw new Exception("Tried to stream from a disconnected page (PageTable parent is required)");

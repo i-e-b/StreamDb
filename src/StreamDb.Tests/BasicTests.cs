@@ -15,7 +15,7 @@ namespace StreamDb.Tests
         public void can_create_a_new_blank_database_in_a_stream_and_use_it (){
             using (var ms = new MemoryStream())
             {
-                var subject = Database.TryConnect(ms);
+                var subject = Database_OLD.TryConnect(ms);
 
                 Console.WriteLine($"Empty database is {ms.Length / 1024}kb");
                 var trueData = 0L;
@@ -55,7 +55,7 @@ namespace StreamDb.Tests
         public void can_create_a_database_with_a_file_stream ()
         {
             using (var fs = File.Open(@"C:\Temp\StreamDBTest.dat", FileMode.Create, FileAccess.ReadWrite, FileShare.None))
-            using (var db = Database.TryConnect(fs))
+            using (var db = Database_OLD.TryConnect(fs))
             {
 
                 // write some documents
@@ -86,7 +86,7 @@ namespace StreamDb.Tests
         public void z_can_open_an_existing_database_from_a_file_stream()
         {
             using (var fs = File.Open(@"C:\Temp\StreamDBTest.dat", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
-            using (var db = Database.TryConnect(fs))
+            using (var db = Database_OLD.TryConnect(fs))
             {
 
                 for (int i = 0; i < 10; i++)
@@ -103,7 +103,7 @@ namespace StreamDb.Tests
         {
             // We expect write operations to fail, but should be able to full access all data.
             using (var fs = File.Open(@"C:\Temp\StreamDBTest.dat", FileMode.Open, FileAccess.Read, FileShare.None))
-            using (var db = Database.TryConnect(fs))
+            using (var db = Database_OLD.TryConnect(fs))
             {
 
                 for (int i = 0; i < 10; i++)
@@ -123,7 +123,7 @@ namespace StreamDb.Tests
             // Build a db in ram, then write over 1 byte per page
             using (var ms = new MemoryStream())
             {
-                var subject = Database.TryConnect(ms);
+                var subject = Database_OLD.TryConnect(ms);
 
                 Console.WriteLine($"Empty database is {ms.Length / 1024}kb");
 
@@ -150,7 +150,7 @@ namespace StreamDb.Tests
         public void lookup_the_paths_for_a_document_id () {
             using (var ms = new MemoryStream())
             {
-                var subject = Database.TryConnect(ms);
+                var subject = Database_OLD.TryConnect(ms);
 
                 var docId = subject.WriteDocument("original/path", MakeTestDocument());
                 subject.BindToPath(docId, "new/path/same/document");
@@ -168,7 +168,7 @@ namespace StreamDb.Tests
             {
                 const int rounds = 250;
 
-                var subject = Database.TryConnect(ms);
+                var subject = Database_OLD.TryConnect(ms);
 
                 var docId = subject.WriteDocument("original/path", MakeTestDocument());
 
@@ -191,7 +191,7 @@ namespace StreamDb.Tests
                 // serialise
                 ms.Rewind();
                 var raw = ms.ToArray();
-                var result = Database.TryConnect(new MemoryStream(raw));
+                var result = Database_OLD.TryConnect(new MemoryStream(raw));
 
                 // read back
                 var found = result.ListPaths(docId).ToList();
@@ -203,7 +203,7 @@ namespace StreamDb.Tests
         public void search_for_paths_with_a_path_prefix () {
             using (var ms = new MemoryStream())
             {
-                var subject = Database.TryConnect(ms);
+                var subject = Database_OLD.TryConnect(ms);
 
                 // spam a few paths
                 subject.WriteDocument("Some may say that this is not a path", MakeTestDocument());
@@ -223,7 +223,7 @@ namespace StreamDb.Tests
         public void removing_a_document_removes_it_from_all_paths (){
             using (var ms = new MemoryStream())
             {
-                var subject = Database.TryConnect(ms);
+                var subject = Database_OLD.TryConnect(ms);
 
                 var docId = subject.WriteDocument("original/path", MakeTestDocument());
                 subject.BindToPath(docId, "new/path/same/document");
@@ -239,7 +239,7 @@ namespace StreamDb.Tests
         public void unbinding_a_document_from_a_path_does_not_remove_the_document_or_other_paths (){
             using (var ms = new MemoryStream())
             {
-                var subject = Database.TryConnect(ms);
+                var subject = Database_OLD.TryConnect(ms);
 
                 var docId = subject.WriteDocument("original/path", MakeTestDocument());
                 subject.BindToPath(docId, "new/path/same/document");
@@ -256,7 +256,7 @@ namespace StreamDb.Tests
             using (var ms = new MemoryStream())
             {
                 var testDoc = MakeTestDocument();
-                var subject = Database.TryConnect(ms);
+                var subject = Database_OLD.TryConnect(ms);
 
                 var docId = subject.WriteDocument("original/path", testDoc);
                 subject.UnbindPath(docId, "original/path");
@@ -284,7 +284,7 @@ namespace StreamDb.Tests
             using (var doc = MakeTestDocument())
             using (var ms = new MemoryStream())
             {
-                var subject = Database.TryConnect(ms);
+                var subject = Database_OLD.TryConnect(ms);
 
                 Console.WriteLine($"Empty database is {ms.Length / 1024}kb");
 
@@ -310,7 +310,7 @@ namespace StreamDb.Tests
             using (var doc = MakeTestDocument())
             using (var ms = new MemoryStream())
             {
-                var subject = Database.TryConnect(ms);
+                var subject = Database_OLD.TryConnect(ms);
 
                 Console.WriteLine($"Empty database is {ms.Length / 1024}kb");
 
@@ -333,7 +333,7 @@ namespace StreamDb.Tests
             using (var doc = MakeTestDocument())
             using (var ms = new MemoryStream())
             {
-                var subject = Database.TryConnect(ms);
+                var subject = Database_OLD.TryConnect(ms);
 
                 Console.WriteLine("Writing doc");
                 doc.Seek(0, SeekOrigin.Begin);

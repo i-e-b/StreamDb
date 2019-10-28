@@ -3,52 +3,17 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using JetBrains.Annotations;
+using StreamDb.Internal.DbStructure;
 using StreamDb.Internal.Support;
 
-namespace StreamDb.Internal.DbStructure
+namespace StreamDb.Internal.Core
 {
     /// <summary>
-    /// The page table class helps manage all the little bits of the database, but it does not present a user-interface.
-    /// Always use the `Database` class unless you are doing very low level work.
-    ///
-    /// This is the core of the database format.
-    /// Our database starts with a root page that links to:
-    ///  - an index page chain
-    ///  - a path lookup chain
-    ///  - a free page chain
-    /// Occupied document data pages are not listed in the root, these are reachable from the index pages.
-    /// A valid page table never has less than 4 pages (pageID 0..3) -- so pageID 4 is the first valid page to allocate
+    /// Holds crap that should be removed
     /// </summary>
-    /// <remarks>
-    /// This class is turning into a bit of a mess. TODO: rebuild this with better abstractions once the DB is functioning.
-    /// </remarks>
-    public class PageTable
-    {
-        /// <summary> A magic number we use to recognise our database format </summary>
-        public const ulong HEADER_MAGIC = 0x572E_FEED_FACE_DA7A;
-
-        /*
-         * Page table should have a single root entry that is not updated unless absolutely needed (helps with thread safety)
-         * This should have links to:
-         *   - a GUID tree (for document ID -> Page lookups); Guid tree nodes should have a list of versions, each to a chain of data
-         *   - Data page list
-         * maybe more, but see if we can cope with just this
-         */
-        [NotNull]private readonly InterlockBinaryStream _storage;
-        
-        /// <summary>
-        /// A lock around getting a new page
-        /// </summary>
-        [NotNull]private readonly object _newPageLock = new object();
-
-        [CanBeNull] private RootPage _rootPageCache = null;
-        [CanBeNull] private PathIndex<SerialGuid> _pathIndexCache = null;
-
-        public PageTable([NotNull]Stream fs)
-        {
-            fs.Seek(0, SeekOrigin.Begin);
-            _storage = new InterlockBinaryStream(fs, false);
-
+    public class PageTable:PageTableCore{
+        /// <inheritdoc />
+        public PageTable([NotNull] Stream fs) : base(fs) { 
             // Basic sanity tests
             StartupSanityTests(fs);
             
@@ -58,6 +23,7 @@ namespace StreamDb.Internal.DbStructure
             if (!root.IndexLink.TryGetLink(0, out _)) throw new Exception("Database index table is damaged");
             if (!root.PathLookupLink.TryGetLink(0, out _)) throw new Exception("Database path lookup table is damaged");
         }
+
 
         private void StartupSanityTests([NotNull]Stream fs)
         {
@@ -198,6 +164,53 @@ namespace StreamDb.Internal.DbStructure
             return root;
         }
 
+    }
+
+
+
+    /// <summary>
+    /// The page table class helps manage all the little bits of the database, but it does not present a user-interface.
+    /// Always use the `Database` class unless you are doing very low level work.
+    ///
+    /// This is the core of the database format.
+    /// Our database starts with a root page that links to:
+    ///  - an index page chain
+    ///  - a path lookup chain
+    ///  - a free page chain
+    /// Occupied document data pages are not listed in the root, these are reachable from the index pages.
+    /// A valid page table never has less than 4 pages (pageID 0..3) -- so pageID 4 is the first valid page to allocate
+    /// </summary>
+    /// <remarks>
+    /// This class is turning into a bit of a mess. TODO: rebuild this with better abstractions once the DB is functioning.
+    /// </remarks>
+    public class PageTableCore
+    {
+        /// <summary> A magic number we use to recognise our database format </summary>
+        public const ulong HEADER_MAGIC = 0x572E_FEED_FACE_DA7A;
+
+        /*
+         * Page table should have a single root entry that is not updated unless absolutely needed (helps with thread safety)
+         * This should have links to:
+         *   - a GUID tree (for document ID -> Page lookups); Guid tree nodes should have a list of versions, each to a chain of data
+         *   - Data page list
+         * maybe more, but see if we can cope with just this
+         */
+        [NotNull]protected readonly InterlockBinaryStream _storage;
+        
+        /// <summary>
+        /// A lock around getting a new page
+        /// </summary>
+        [NotNull]private readonly object _newPageLock = new object();
+
+        [CanBeNull] private RootPage _rootPageCache = null;
+        [CanBeNull] private PathIndex<SerialGuid> _pathIndexCache = null;
+
+        public PageTableCore([NotNull]Stream fs)
+        {
+            fs.Seek(0, SeekOrigin.Begin);
+            _storage = new InterlockBinaryStream(fs, false);
+        }
+
         /// <summary>
         /// Read a specific existing page by Page ID. Returns null if the page does not exist.
         /// </summary>
@@ -249,7 +262,8 @@ namespace StreamDb.Internal.DbStructure
             }
         }
 
-        [NotNull]private RootPage ReadRoot() {
+        [NotNull]
+        protected RootPage ReadRoot() {
             if (_rootPageCache != null) return _rootPageCache;
 
             var page = GetPageRaw(0);
@@ -770,10 +784,10 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         public void CommitRootCache()
         {
+            var page = Page<RootPage>.FromRaw(GetPageRaw(0));
             if (_rootPageCache == null) return;
+            page.View = _rootPageCache;
 
-            var page = NewRootPage(_rootPageCache);
-            
             CommitPage(page);
         }
 
