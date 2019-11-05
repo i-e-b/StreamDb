@@ -7,7 +7,7 @@ using StreamDb.Internal.Search;
 namespace StreamDb.Tests
 {
     [TestFixture]
-    public class UkkonenSuffixTreeTests
+    public class SuffixTreeTests
     {
         //                                           1         2         3         4         5         6         7 
         //                                 012345678901234567890123456789012345678901234567890123456789012345678901

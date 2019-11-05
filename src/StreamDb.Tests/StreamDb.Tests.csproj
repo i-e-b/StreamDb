@@ -53,9 +53,10 @@
     <Compile Include="PageDataTests.cs" />
     <Compile Include="PageTableTests.cs" />
     <Compile Include="PathIndexingTests.cs" />
+    <Compile Include="PersistentReverseTrie.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ThreadingAndRecoveryTests.cs" />
-    <Compile Include="UkkonenSuffixTreeTests.cs" />
+    <Compile Include="SuffixTreeTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
