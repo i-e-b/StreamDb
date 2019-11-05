@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using NUnit.Framework;
-using NUnit.Framework.Constraints;
 
 namespace StreamDb.Tests
 {
@@ -16,6 +15,8 @@ namespace StreamDb.Tests
         // http://programmerspatch.blogspot.com/2013/02/ukkonens-suffix-tree-algorithm.html
         // http://brenden.github.io/ukkonen-animation/
 
+        //                                           1         2         3         4         5         6         7 
+        //                                 012345678901234567890123456789012345678901234567890123456789012345678901
         private const string SampleText = "how much wood would a wood chuck chuck if a wood chuck could chuck wood";
 
         [Test]
@@ -39,23 +40,64 @@ namespace StreamDb.Tests
             Assert.That(subject.Contains("wooden"), Is.False);
             Assert.That(subject.Contains("wwood"), Is.False);
         }
+
+        [Test]
+        public void query_for_all_positions_simple() {
+            var subject = new SuffixTree();
+            subject.Extend("abcabxabcd$");
+            subject.Terminate(); // required to catch the last one
+
+            //var desc = subject.TreeDescription();
+            //Console.WriteLine(desc);
+            
+            var positions = subject.FindAll("abc").ToList().OrderBy(n=>n);
+            var result = string.Join(",", positions);
+            Assert.That(result, Is.EqualTo("0,6"));
+
+            
+            positions = subject.FindAll("b").ToList().OrderBy(n=>n);
+            result = string.Join(",", positions);
+            Assert.That(result, Is.EqualTo("1,4,7"));
+        }
+
+        [Test]
+        public void query_for_all_positions () {
+            var subject = new SuffixTree();
+            subject.Extend(SampleText);
+            subject.Terminate(); // required to catch the last one
+
+            //var desc = subject.TreeDescription();
+            //Console.WriteLine(desc);
+            
+            var positions = subject.FindAll("wood").ToList().OrderBy(n=>n);
+            var result = string.Join(",", positions);
+            Assert.That(result, Is.EqualTo("9,22,44,67"), "positions of 'wood'");
+
+            
+            positions = subject.FindAll("chuck").ToList().OrderBy(n=>n);
+            result = string.Join(",", positions);
+            Assert.That(result, Is.EqualTo("27,33,49,61"), "positions of 'chuck'");
+            
+        }
     }
 
     public class SuffixNode {
         public int Start;
         public int End;
         public int SuffixLink;
-        public Map<int,int> Next;
+        public Map<char,int> Next;
 
         public SuffixNode()
         {
-            Next = new Map<int, int>(); //int[SuffixTree.SymbolCount];
+            // This could be <int,int>, and use -1 as the special termination marker?
+            Next = new Map<char, int>();
         }
 
         public int EdgeLength(int position) => Math.Min(End, position + 1) - Start;
+        public bool IsLeaf() => Next.IsEmpty();
     }
 
-    public class Map<TIdx, TVal>
+    public class Map<TIdx, TVal> where TIdx:struct
     {
         private readonly Dictionary<TIdx, TVal> _data;
 
@@ -75,14 +117,16 @@ namespace StreamDb.Tests
 
         public IEnumerable<TIdx> Keys() => _data.Keys;
         public bool Contains(TIdx idx) => _data.ContainsKey(idx);
+        public bool IsEmpty() => _data.Count < 1;
+        public IEnumerable<KeyValuePair<TIdx, TVal>> All() => _data.Select(a=>a);
 
         public Map() { _data = new Dictionary<TIdx, TVal>(); }
+
     }
 
     public class SuffixTree
     {
-        public const int Infinity = 1 << 28; // Special value marking 'until end', sometimes '#' in papers.
-        public const int SymbolCount = 256; // also known as 'Alphabet Size' in papers.
+        public const int Infinity = 1 << 29; // Special value marking 'until end', sometimes '#' in papers.
 
         readonly int _root;
         int _pos, _needSLink, _remainder, _activeNode, _activeEdge, _activeLength;
@@ -122,32 +166,36 @@ namespace StreamDb.Tests
 
         private void DescribeNodeRecursive(StringBuilder sb, int idx, int depth)
         {
-            sb.Append("(");
             var node = _tree[idx];
-            sb.Append('^');
             sb.Append(NodeText(node));
+            var end = Math.Min(_text.Count-1, node.End);
+            sb.Append($" [{idx}: ^{node.Start} {end}$");
+            if (node.SuffixLink > 0) {
+                sb.Append($" SL={node.SuffixLink}");
+            }
+            sb.Append("] (");
 
             var keys = node.Next.Keys().ToArray();
             if (keys.Length > 0)
             {
-                sb.Append(" -> ");
-
                 foreach (var nextChar in keys)
                 {
                     sb.Append("\r\n");
                     sb.Append(' ', depth);
-                    sb.Append((char)nextChar);
 
                     DescribeNodeRecursive(sb, node.Next[nextChar], depth + 1);
                 }
+                sb.Append("\r\n");
+                sb.Append(' ', depth);
             }
-            if (node.SuffixLink > 0) {
-                sb.Append(" [");
-                sb.Append(NodeText(_tree[node.SuffixLink]));
-                sb.Append(']');
-            }
-
             sb.Append(") ");
+
+        }
+
+        private int EdgeLength(SuffixNode node) {
+            var stop = Math.Min(node.End, _text.Count);
+            if (node.Start == stop) return 1;
+            return stop - node.Start;
         }
 
         private string NodeText(SuffixNode node)
@@ -170,30 +218,53 @@ namespace StreamDb.Tests
         /// </summary>
         public bool Contains(string pattern)
         {
-            var strIdx = 0;
-            var strEnd = pattern.Length - 1;
+            var index = FindNodeIndex(pattern, out _);
+            return index >= 0;
+        }
 
-            var node = _tree[_root];
-            var edgeText = NodeText(node);
-            var edgeIdx = 0;
+        
+        /// <summary>
+        /// List all positions in the source text where the pattern is found.
+        /// Returns empty if the pattern is not found.
+        /// If an empty pattern is given, an empty set is returned (technically, it should give every position in the string). 
+        /// </summary>
+        public IEnumerable<int> FindAll(string pattern)
+        {
+            // Find the pattern our tree (as close to the root as possible)
+            // All suffix positions below this point are occurances of the pattern
 
-            while (strIdx < strEnd) {
-                var c = pattern[strIdx];
-                // walk through the current edge
-                if (edgeIdx < edgeText.Length) {
-                    if (edgeText[edgeIdx] != c) return false;
-                    edgeIdx++;
-                    strIdx++;
-                    continue;
-                }
+            var start = FindNodeIndex(pattern, out var remains);
+            if (start <= 0) yield break; // not found, or empty pattern.
 
-                // step next
-                if (!node.Next.Contains(c)) return false;
-                node = _tree[node.Next[c]];
-                edgeText = NodeText(node);
-                edgeIdx = 0;
+            var startNode = _tree[start];
+            var prime = pattern.Length - (EdgeLength(startNode) - remains);
+
+            // Walk the tree, yield leaf node positions
+            foreach (var idx in FindLeafsRec(start, prime)) yield return idx;
+        }
+
+
+
+        private IEnumerable<int> FindLeafsRec(int nodeIdx, int pathLength)
+        {
+            var node = _tree[nodeIdx];
+            var len = EdgeLength(node);
+
+            if (node.IsLeaf())
+            {
+                var loc = _text.Count - (pathLength + len);
+                yield return loc;
             }
-            return true;
+
+            foreach (char key in node.Next.Keys())
+            {
+                var nextSet = FindLeafsRec(node.Next[key], pathLength + len);
+                foreach (var position in nextSet)
+                {
+                    yield return position;
+                }
+            }
+
         }
 
         /// <summary>
@@ -217,6 +288,52 @@ namespace StreamDb.Tests
             _remainder++;
 
             PropagateAddition(c);
+        }
+
+        /// <summary>
+        /// Mark the source text as completed by adding a `NUL` character to the end.
+        /// </summary>
+        public void Terminate() {
+            ExtendOne('\0');
+        }
+
+        /// <summary>
+        /// Find the index in `_tree` of a node matching the given pattern. Returns -1 if the pattern is not found.
+        /// </summary>
+        private int FindNodeIndex(string pattern, out int remains)
+        {
+            remains = 0;
+            if (pattern == null) return -1;
+            if (pattern == "") return 0;
+
+            var strIdx = 0;
+            var strEnd = pattern.Length;
+
+            var nodeIndex = _root;
+            var node = _tree[nodeIndex];
+            var edgeText = NodeText(node);
+            var edgeIdx = 0;
+
+            while (strIdx < strEnd) {
+                var c = pattern[strIdx];
+                // walk through the current edge
+                if (edgeIdx < edgeText.Length) {
+                    if (edgeText[edgeIdx] != c) return -1;
+                    edgeIdx++;
+                    strIdx++;
+                    continue;
+                }
+
+                // step next
+                if (!node.Next.Contains(c)) return -1;
+                nodeIndex = node.Next[c];
+                node = _tree[node.Next[c]];
+                edgeText = NodeText(node);
+                edgeIdx = 0;
+            }
+
+            remains = (edgeText.Length - edgeIdx);
+            return nodeIndex;
         }
 
         private void PropagateAddition(char c)
@@ -250,13 +367,11 @@ namespace StreamDb.Tests
                 if (_activeNode == _root && _activeLength > 0)
                 {
                     _activeLength--;
-                    _activeEdge = _pos - _remainder + 1;
+                    _activeEdge = (_pos - _remainder) + 1;
                 }
                 else
                 {
-                    _activeNode = (_tree[_activeNode].SuffixLink > 0)
-                        ? _tree[_activeNode].SuffixLink
-                        : _root;
+                    _activeNode = _tree[_activeNode].SuffixLink;
                 }
             }
         }
@@ -298,5 +413,6 @@ namespace StreamDb.Tests
             _activeNode = nodeIdx;
             return true;
         }
+
     }
 }
