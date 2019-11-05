@@ -94,7 +94,7 @@ namespace StreamDb.Tests
 
             
             sw.Restart();
-            var positions = subject.FindAll("x").OrderBy(n=>n).ToList();
+            var positions = subject.FindAll(new[]{ (byte)'x'}).OrderBy(n=>n).ToList();
             var result = string.Join(",", positions);
             sw.Stop();
             Console.WriteLine($"Querying suffix tree took {sw.Elapsed}");

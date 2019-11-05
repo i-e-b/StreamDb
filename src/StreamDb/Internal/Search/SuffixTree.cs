@@ -59,23 +59,37 @@ namespace StreamDb.Internal.Search
         }
 
         /// <summary>
-        /// Returns true if the pattern exists at least once in the source text.
-        /// Search is case sensitive
+        /// Returns true if the pattern exists at least once in the source.
         /// </summary>
-        public bool Contains(string pattern)
+        public bool Contains(byte[] pattern)
         {
             var index = FindNodeIndex(pattern, out _);
             return index >= 0;
         }
+        
+        /// <summary>
+        /// Returns true if the pattern exists at least once in the source.
+        /// Search is ordinal (case sensitive and unicode representation sensitive)
+        /// </summary>
+        public bool Contains(string pattern) { return Contains(Encoding.UTF8?.GetBytes(pattern)); }
 
+        
         /// <summary>
         /// List all positions in the source text where the pattern is found.
         /// Returns empty if the pattern is not found.
         /// If an empty pattern is given, an empty set is returned (technically, it should give every position in the string). 
+        /// Search is ordinal (case sensitive and unicode representation sensitive)
         /// </summary>
-        [NotNull] public IEnumerable<int> FindAll(string pattern)
+        [NotNull] public IEnumerable<int> FindAll(string pattern) { return FindAll(Encoding.UTF8?.GetBytes(pattern)); }
+
+        /// <summary>
+        /// List all positions in the source where the pattern is found.
+        /// Returns empty if the pattern is not found.
+        /// If an empty pattern is given, an empty set is returned (technically, it should give every position in the string). 
+        /// </summary>
+        [NotNull] public IEnumerable<int> FindAll(byte[] pattern)
         {
-            if (string.IsNullOrEmpty(pattern)) yield break;
+            if (pattern == null || pattern.Length < 1) yield break;
 
             // Find the pattern our tree (as close to the root as possible)
             // All suffix positions below this point are occurances of the pattern
@@ -153,7 +167,7 @@ namespace StreamDb.Internal.Search
         private void DescribeNodeRecursive([NotNull]StringBuilder sb, int idx, int depth)
         {
             var node = _tree[idx];
-            sb.Append(NodeText(node));
+            sb.Append(DescribeData(NodeEdgeData(node)));
             var end = Math.Min(_text.Count-1, node.End);
             sb.Append($" [{idx}: ^{node.Start} {end}$");
             if (node.SuffixLink > 0) {
@@ -178,40 +192,53 @@ namespace StreamDb.Internal.Search
 
         }
 
+        private string DescribeData(int[] data)
+        {
+            if (data == null) return "<null>";
+            var sb = new StringBuilder();
+            for (int i = 0; i < data.Length; i++)
+            {
+                if (data[i] >= 32 && data[i] < 127) sb.Append((char)data[i]);
+                else sb.Append(data[i].ToString("X"));
+            }
+            return sb.ToString();
+        }
+
         private int EdgeLength([NotNull]SuffixNode node) {
             var stop = Math.Min(node.End, _text.Count);
             if (node.Start == stop) return 1;
             return stop - node.Start;
         }
 
-        [NotNull]private string NodeText([NotNull]SuffixNode node)
+        [NotNull]private int[] NodeEdgeData([NotNull]SuffixNode node)
         {
             var stop = Math.Min(node.End, _text.Count);
-            if (node.Start == stop) return "";
+            if (node.Start == stop) return new int[0];
 
-            var sb = new StringBuilder();
+            var sb = new int[stop - node.Start];
+            var j=0;
             for (int i = node.Start; i < stop; i++)
             {
-                sb.Append((char)_text[i]);
+                sb[j++] = _text[i];
             }
-            return sb.ToString();
+            return sb;
         }
 
         /// <summary>
         /// Find the index in `_tree` of a node matching the given pattern. Returns -1 if the pattern is not found.
         /// </summary>
-        private int FindNodeIndex(string pattern, out int remains)
+        private int FindNodeIndex(byte[] pattern, out int remains)
         {
             remains = 0;
             if (pattern == null) return -1;
-            if (pattern == "") return 0;
+            if (pattern.Length < 1) return 0;
 
             var strIdx = 0;
             var strEnd = pattern.Length;
 
             var nodeIndex = _root;
             var node = _tree[nodeIndex];
-            var edgeText = NodeText(node);
+            var edgeText = NodeEdgeData(node);
             var edgeIdx = 0;
 
             while (strIdx < strEnd) {
@@ -228,7 +255,7 @@ namespace StreamDb.Internal.Search
                 if (!node.Next.Contains(c)) return -1;
                 nodeIndex = node.Next[c];
                 node = _tree[node.Next[c]];
-                edgeText = NodeText(node);
+                edgeText = NodeEdgeData(node);
                 edgeIdx = 0;
             }
 
