@@ -44,7 +44,7 @@ namespace StreamDb.Internal.Support
         /// <inheritdoc />
         public override bool Equals(object obj)
         {
-            return (obj is PartiallyOrdered ordered) && (CompareTo(this, ordered) == 0);
+            return (obj is MonotonicByte other) && (CompareTo(this, other) == 0);
         }
 
         public int CompareTo(object obj)
