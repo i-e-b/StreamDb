@@ -4,32 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using JetBrains.Annotations;
-using StreamDb.Internal.Support;
 
-namespace StreamDb.Internal.DbStructure
+namespace StreamDb.Internal.Support
 {
-    /*
-     
-        Need a new way of doing this.
-        Requirements:
-
-        Lookup:
-        - Search for real paths given a prefix
-        - Link from path to document ID
-        - Link an ID to more than one path
-        - Remove a path (or unlink ID from it)
-        - Search is fast
-        
-        Storage:
-        - Minimal change to data pages per link/unlink
-        - Isolation of data changes to a single page per link/unlink (fewer page commits, better threading)
-        - Changes are versioned, so a partial write doesn't break anything.
-
-        */
-
-
-
-
     /// <summary>
     /// Provides Path->ID indexing
     /// </summary>
@@ -38,7 +15,7 @@ namespace StreamDb.Internal.DbStructure
     /// The result of path index is stored as a special document in the database, and used
     /// to look up files by path.
     /// </remarks>
-    public class PathIndex<T>: IStreamSerialisable where T : PartiallyOrdered, IStreamSerialisable, new()
+    public class TertiaryTrie<T>: IStreamSerialisable where T : PartiallyOrdered, IStreamSerialisable, new()
     {
         // Serialisation tags:
         const byte START_MARKER  = 0xFF; // start of a stream
@@ -109,7 +86,7 @@ namespace StreamDb.Internal.DbStructure
         [NotNull, ItemNotNull]private readonly List<Node> _nodes;
         [NotNull, ItemNotNull]private readonly List<Entry> _entries;
 
-        public PathIndex() { _nodes = new List<Node>(); _entries = new List<Entry>(); }
+        public TertiaryTrie() { _nodes = new List<Node>(); _entries = new List<Entry>(); }
 
         /// <summary>
         /// Insert a path/value pair into the index.
@@ -474,10 +451,10 @@ namespace StreamDb.Internal.DbStructure
         /// Read a stream (previously written by `WriteTo`) from its current position
         /// into a new index. Will throw an exception if the data is not consistent and complete.
         /// </summary>
-        [NotNull] public static PathIndex<T> ReadFrom(Stream stream)
+        [NotNull] public static TertiaryTrie<T> ReadFrom(Stream stream)
         {
             if (stream == null) throw new ArgumentNullException(nameof(stream));
-            var result = new PathIndex<T>();
+            var result = new TertiaryTrie<T>();
             OverwriteFromStream(stream, result);
             return result;
         }
@@ -554,7 +531,7 @@ namespace StreamDb.Internal.DbStructure
         }
 
 
-        private static void OverwriteFromStream([NotNull]Stream stream, [NotNull]PathIndex<T> result)
+        private static void OverwriteFromStream([NotNull]Stream stream, [NotNull]TertiaryTrie<T> result)
         {
             using (var r = new BinaryReader(stream, Encoding.UTF8, true))
             {
@@ -669,7 +646,7 @@ namespace StreamDb.Internal.DbStructure
             }
         }
 
-        private static void StitchLink([NotNull]PathIndex<T> result, BackLink backLink, int targetOffset)
+        private static void StitchLink([NotNull]TertiaryTrie<T> result, BackLink backLink, int targetOffset)
         {
             if (backLink.Type == BackLinkType.None) return;
 

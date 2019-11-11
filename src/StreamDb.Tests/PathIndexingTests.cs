@@ -13,7 +13,7 @@ namespace StreamDb.Tests
         [Test]
         public void can_add_keys_to_tree ()
         {
-            var subject = new PathIndex<ByteString>();
+            var subject = new TertiaryTrie<ByteString>();
 
             subject.Add("my/path/1", "value1");
             subject.Add("my/other/path", "value2");
@@ -23,7 +23,7 @@ namespace StreamDb.Tests
 
         [Test]
         public void stress_test () {
-            var subject = new PathIndex<ByteString>();
+            var subject = new TertiaryTrie<ByteString>();
 
             subject.Add("start", "start value");
 
@@ -58,7 +58,7 @@ namespace StreamDb.Tests
         [Test]
         public void can_query_keys_for_values ()
         {
-            var subject = new PathIndex<ByteString>();
+            var subject = new TertiaryTrie<ByteString>();
 
             subject.Add("my/path/1", "value1");
             subject.Add("my/path/2", "value2");
@@ -77,7 +77,7 @@ namespace StreamDb.Tests
         [Test]
         public void can_query_keys_using_a_partial_key ()
         {
-            var subject = new PathIndex<ByteString>();
+            var subject = new TertiaryTrie<ByteString>();
 
             subject.Add("my/path/1", "value1");
             subject.Add("my/path/2", "value2");
@@ -94,7 +94,7 @@ namespace StreamDb.Tests
             // Note -- we don't actually remove the key, just the value
             // This is the same as setting the value to null.
 
-            var subject = new PathIndex<ByteString>();
+            var subject = new TertiaryTrie<ByteString>();
 
             subject.Add("my/path/1", "value1");
             subject.Add("my/path/2", "value2");
@@ -119,7 +119,7 @@ namespace StreamDb.Tests
         [Test]
         public void survives_serialisation () {
 
-            var source = new PathIndex<ByteString>();
+            var source = new TertiaryTrie<ByteString>();
 
             source.Add("my/path/1", "value1");
             source.Add("my/path/2", "value2");
@@ -133,7 +133,7 @@ namespace StreamDb.Tests
 
             Console.WriteLine(bytes.ToHexString());
 
-            var result = new PathIndex<ByteString>();
+            var result = new TertiaryTrie<ByteString>();
             bytes.Seek(0, SeekOrigin.Begin);
             result.Defrost(bytes);
 
@@ -147,7 +147,7 @@ namespace StreamDb.Tests
         [Test]
         public void can_output_to_a_stream ()
         {
-            var subject = new PathIndex<ByteString>();
+            var subject = new TertiaryTrie<ByteString>();
 
             subject.Add("my/path/1", "value1");
             subject.Add("my/path/2", "value2");
@@ -165,7 +165,7 @@ namespace StreamDb.Tests
         [Test]
         public void can_read_from_a_stream () 
         {
-            var source = new PathIndex<ByteString>();
+            var source = new TertiaryTrie<ByteString>();
 
             source.Add("my/path/1", "value1");
             source.Add("my/path/2", "value2");
@@ -175,7 +175,7 @@ namespace StreamDb.Tests
             using (var ms = new MemoryStream()) {
                 source.WriteTo(ms);
                 ms.Seek(0, SeekOrigin.Begin);
-                var target = PathIndex<ByteString>.ReadFrom(ms);
+                var target = TertiaryTrie<ByteString>.ReadFrom(ms);
 
                 Assert.That((string)target.Get("my/path/1"), Is.EqualTo("value1"));
                 Assert.That((string)target.Get("my/path/2"), Is.EqualTo("value2"));
@@ -186,7 +186,7 @@ namespace StreamDb.Tests
 
         [Test]
         public void indexing_guid_values () {
-            var source = new PathIndex<SerialGuid>();
+            var source = new TertiaryTrie<SerialGuid>();
 
             var guid1 = Guid.NewGuid();
             var guid2 = Guid.NewGuid();
@@ -208,7 +208,7 @@ namespace StreamDb.Tests
 
             // NOTE: this does not cover changes to pre-existing paths!
 
-            var source = new PathIndex<ByteString>();
+            var source = new TertiaryTrie<ByteString>();
 
             source.Add("my/path/1", "value1");
             source.Add("my/path/2", "value2");
@@ -243,7 +243,7 @@ namespace StreamDb.Tests
             bytes2.CopyTo(concat);
 
 
-            var result = new PathIndex<ByteString>();
+            var result = new TertiaryTrie<ByteString>();
             concat.Seek(0, SeekOrigin.Begin);
             result.Defrost(concat);
 
@@ -259,7 +259,7 @@ namespace StreamDb.Tests
 
         [Test]
         public void can_lookup_populated_paths_given_a_prefix () {
-            var source = new PathIndex<ByteString>();
+            var source = new TertiaryTrie<ByteString>();
 
             source.Add("what/path/1", "value1");
             source.Add("my/path/1", "value1");
@@ -284,7 +284,7 @@ namespace StreamDb.Tests
             // to. Could be a simple set of scans (slow) or a restructuring
             // of the internal data.
             
-            var source = new PathIndex<ByteString>();
+            var source = new TertiaryTrie<ByteString>();
 
             source.Add("very different", "value0");
             source.Add("my/path/1", "value1");
@@ -308,7 +308,7 @@ namespace StreamDb.Tests
             // to. Could be a simple set of scans (slow) or a restructuring
             // of the internal data.
             
-            var source = new PathIndex<ByteString>();
+            var source = new TertiaryTrie<ByteString>();
 
             source.Add("very different", "value0");
             source.Add("my/path/1", "value1");
@@ -320,7 +320,7 @@ namespace StreamDb.Tests
             source.Add("z - very different", "value0");
 
             var bytes = source.Freeze();
-            var reconstituted = new PathIndex<ByteString>();
+            var reconstituted = new TertiaryTrie<ByteString>();
             bytes.Seek(0, SeekOrigin.Begin);
             reconstituted.Defrost(bytes);
 
@@ -331,7 +331,7 @@ namespace StreamDb.Tests
 
         [Test]
         public void can_remove_a_path () {
-            var source = new PathIndex<ByteString>();
+            var source = new TertiaryTrie<ByteString>();
 
             source.Add("my/path/1", "value0");
             source.Add("my/path/dead", "value0");
@@ -354,7 +354,7 @@ namespace StreamDb.Tests
 
             // NOTE: this does not cover changes to pre-existing paths!
 
-            var source = new PathIndex<ByteString>();
+            var source = new TertiaryTrie<ByteString>();
 
             source.Add("my/path/1", "value1");
             source.Add("my/path/2", "value2");
@@ -391,7 +391,7 @@ namespace StreamDb.Tests
             Console.WriteLine(bytes2.ToHexString());
 
 
-            var result = new PathIndex<ByteString>();
+            var result = new TertiaryTrie<ByteString>();
             concat.Seek(0, SeekOrigin.Begin);
             result.Defrost(concat);
 
@@ -408,7 +408,7 @@ namespace StreamDb.Tests
         public void out_of_order_inserts_can_be_recovered ()
         {
             // build up a cluster of variants at the end of a common chain
-            var subject = new PathIndex<ByteString>();
+            var subject = new TertiaryTrie<ByteString>();
             var ooo = Enumerable.Range(0, 100).ToList().Shuffle() ?? throw new Exception("Setup failed");
 
             // insert out of order

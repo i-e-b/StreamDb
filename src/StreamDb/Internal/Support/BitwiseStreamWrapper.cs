@@ -117,6 +117,31 @@ namespace StreamDb.Internal.Support
             b=((currentIn & readMask) != 0) ? 1 : 0;
             return true;
         }
+        
+        /// <summary>
+        /// Read a single bit value from the stream.
+        /// Returns true if data can be read. Includes run-out bits
+        /// </summary>
+        public bool TryReadBit_RO(out int b)
+        {
+            b=0;
+            if (inRunOut)
+            {
+                return _runoutBits-- > 0;
+            }
+            if (readMask == 1)
+            {
+                currentIn = _original.ReadByte();
+                if (currentIn < 0) { inRunOut = true; return _runoutBits > 0; }
+                readMask = 0x80;
+            }
+            else
+            {
+                readMask >>= 1;
+            }
+            b=((currentIn & readMask) != 0) ? 1 : 0;
+            return true;
+        }
 
         /// <summary>
         /// Read 8 bits from the stream. These might not be aligned to a byte boundary

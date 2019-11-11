@@ -61,7 +61,7 @@ namespace StreamDb.Internal.Core
 
             var index0 = new IndexPage();
             var free0 = new FreeListPage();
-            var path0 = new PathIndex<SerialGuid>();
+            var path0 = new ReverseTrie<SerialGuid>();
 
             // we use fixed positions for the default pages. Set initial versions
             var root0 = new RootPage();
@@ -91,7 +91,7 @@ namespace StreamDb.Internal.Core
 
         }
         
-        [NotNull]private static Page NewPathLookupForBlankDB([NotNull]PathIndex<SerialGuid> path0)
+        [NotNull]private static Page NewPathLookupForBlankDB([NotNull]ReverseTrie<SerialGuid> path0)
         {
             var page = new Page
             {
@@ -203,7 +203,7 @@ namespace StreamDb.Internal.Core
         [NotNull]private readonly object _newPageLock = new object();
 
         [CanBeNull] private RootPage _rootPageCache = null;
-        [CanBeNull] private PathIndex<SerialGuid> _pathIndexCache = null;
+        [CanBeNull] private ReverseTrie<SerialGuid> _pathIndexCache = null;
 
         public PageTableCore([NotNull]Stream fs)
         {
@@ -737,28 +737,8 @@ namespace StreamDb.Internal.Core
         {
             if (_pathIndexCache == null) return;
 
-
-            // Plan:
-            // 1. Serialise the in-memory lookup
-            // 2. Figure out how long the current stored data is
-            // 3. Append only the new data (continue in the last page)
-
             using (var newPathData = _pathIndexCache.Freeze())
             {
-                // Incremental form
-                /*
-                var raw = GetPageRaw(ReadRoot().GetPathLookupBase());
-                var existingDoc = new PageTableStream(this, raw, true);
-
-                if (existingDoc.Length == newPathData.Length) return; // no changes
-                if (existingDoc.Length > newPathData.Length) throw new Exception($"Path lookup structure was truncated: {existingDoc.Length} > {newPathData.Length}"); // Should we write a new chain at this point?
-
-                // Write only the new data to the stream
-                newPathData.Seek(existingDoc.Length - 1, SeekOrigin.Begin);
-                existingDoc.Seek(existingDoc.Length - 1, SeekOrigin.Begin);
-                newPathData.CopyTo(existingDoc); // writing to this stream commits the pages*/
-
-                // Replacement form
                 var raw = GetFreePage();
                 raw.PageType = PageType.PathLookup;
                 raw.DocumentId = Page.PathLookupGuid;
@@ -791,7 +771,7 @@ namespace StreamDb.Internal.Core
             CommitPage(page);
         }
 
-        [NotNull]private PathIndex<SerialGuid> ReadPathIndex()
+        [NotNull]private ReverseTrie<SerialGuid> ReadPathIndex()
         {
             if (_pathIndexCache != null) return _pathIndexCache;
             var root = ReadRoot();
@@ -803,7 +783,8 @@ namespace StreamDb.Internal.Core
             // load as a stream
             var source = new PageTableStream(this, page, false);
 
-            _pathIndexCache = PathIndex<SerialGuid>.ReadFrom(source);
+            _pathIndexCache = new ReverseTrie<SerialGuid>();
+            _pathIndexCache.Defrost(source);
 
             return _pathIndexCache;
         }
