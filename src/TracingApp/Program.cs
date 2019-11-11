@@ -25,7 +25,7 @@ namespace TracingApp
             using (var doc = MakeTestDocument())
             using (var ms = new MemoryStream())
             {
-                var subject = Database_OLD.TryConnect(ms);
+                var subject = Database.TryConnect(ms);
 
                 Console.WriteLine($"Empty database is {ms.Length / 1024}kb");
 

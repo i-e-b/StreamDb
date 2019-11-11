@@ -40,17 +40,18 @@ namespace StreamDb.Internal.DbStructure
         /// Return a free page if it can be found. Returns -1 if no free pages are available.
         /// The free page will be removed from the list as part of the get call.
         /// </summary>
-        public int GetNext()
+        public bool TryGetNext(out int id)
         {
+            id = -1;
             for (int i = 0; i < Capacity; i++)
             {
                 if (_entries[i] < 3) continue;
 
-                var found = _entries[i];
+                id = _entries[i];
                 _entries[i] = 0;
-                return found;
+                return true;
             }
-            return -1;
+            return false;
         }
         
         /// <summary>

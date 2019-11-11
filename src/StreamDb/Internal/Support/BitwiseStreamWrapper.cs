@@ -132,8 +132,8 @@ namespace StreamDb.Internal.Support
             if (readMask == 1)
             {
                 currentIn = _original.ReadByte();
-                if (currentIn < 0) { inRunOut = true; return _runoutBits > 0; }
                 readMask = 0x80;
+                if (currentIn < 0) { inRunOut = true; return _runoutBits > 0; }
             }
             else
             {
@@ -189,11 +189,17 @@ namespace StreamDb.Internal.Support
             currentIn = 0;
         }
 
+        /// <summary>
+        /// Returns true when the source bits are exhausted (excludes run-out)
+        /// </summary>
         public bool IsEmpty()
         {
             return inRunOut;
         }
 
+        /// <summary>
+        /// Returns true if bit can be read INCLUDING run-out
+        /// </summary>
         public bool CanRead()
         {
             return _runoutBits > 1;

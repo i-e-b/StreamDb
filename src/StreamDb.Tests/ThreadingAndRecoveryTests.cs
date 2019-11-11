@@ -22,7 +22,7 @@ namespace StreamDb.Tests
             var baseStream = new MemoryStream();
             var stream = new CutoffStream(baseStream);
 
-            var subject = Database_OLD.TryConnect(stream);
+            var subject = Database.TryConnect(stream);
 
             // Write a good document, then a failure
             subject.WriteDocument("successful", MakeTestDocument());
@@ -41,7 +41,7 @@ namespace StreamDb.Tests
             var rawResult = baseStream.ToArray();
             var newStream = new MemoryStream(rawResult);
 
-            var result = Database_OLD.TryConnect(newStream);
+            var result = Database.TryConnect(newStream);
             var ok = result.Get("successful", out _);
             Assert.That(ok, Is.True, "Fully written document was lost");
 
@@ -99,7 +99,7 @@ namespace StreamDb.Tests
             var baseStream = new MemoryStream();
             var stream = new CutoffStream(baseStream);
 
-            var subject = Database_OLD.TryConnect(stream);
+            var subject = Database.TryConnect(stream);
 
             // Write a good document, then a failure
             subject.WriteDocument("repeat", MakeTestDocument());
@@ -117,7 +117,7 @@ namespace StreamDb.Tests
             var rawResult = baseStream.ToArray();
             var newStream = new MemoryStream(rawResult);
 
-            var result = Database_OLD.TryConnect(newStream);
+            var result = Database.TryConnect(newStream);
             var ok = result.Get("repeat", out var resultData);
             Assert.That(ok, Is.True, "Fully written document was lost");
 
@@ -129,7 +129,7 @@ namespace StreamDb.Tests
         public void writing_documents_in_multiple_threads_works_correctly () {
             using (var ms = new MemoryStream())
             {
-                var subject = Database_OLD.TryConnect(ms);
+                var subject = Database.TryConnect(ms);
 
                 var dispatcher = Dispatch<int>.CreateDefaultMultithreaded("MyTask", threadCount: 10);
 
@@ -153,7 +153,7 @@ namespace StreamDb.Tests
                 var rawData = ms.ToArray();
 
                 // Check we can still load and read the database
-                var result = Database_OLD.TryConnect(new MemoryStream(rawData));
+                var result = Database.TryConnect(new MemoryStream(rawData));
 
                 Console.WriteLine(string.Join(", ", result.Search("test")));
 
@@ -174,7 +174,7 @@ namespace StreamDb.Tests
             using (var doc = MakeTestDocument())
             using (var ms = new MemoryStream())
             {
-                var subject = Database_OLD.TryConnect(ms);
+                var subject = Database.TryConnect(ms);
 
                 Console.WriteLine("Writing doc");
                 doc.Seek(0, SeekOrigin.Begin);

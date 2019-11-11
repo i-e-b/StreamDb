@@ -188,6 +188,12 @@ namespace StreamDb.Internal.Core
         /// <summary> A magic number we use to recognise our database format </summary>
         public const ulong HEADER_MAGIC = 0x572E_FEED_FACE_DA7A;
 
+        /// <summary>
+        /// Maximum page index we support
+        /// </summary>
+        const long MAXPAGE = int.MaxValue / Page.PageRawSize;
+
+
         /*
          * Page table should have a single root entry that is not updated unless absolutely needed (helps with thread safety)
          * This should have links to:
@@ -250,6 +256,7 @@ namespace StreamDb.Internal.Core
 
                 if (reader.BaseStream.Length < byteEnd) throw new Exception($"Database stream is truncated at page {pageId}");
 
+                if (byteOffset < 0) throw new Exception($"Byte offset calculated returned nonsense result (offset = {byteOffset} for pageId = {pageId})");
                 reader.BaseStream.Seek(byteOffset, SeekOrigin.Begin);
                 
                 var result = new Page();
@@ -295,15 +302,15 @@ namespace StreamDb.Internal.Core
         /// The returned page will have a correct OriginalPageID, but will need other headers reset, and a new CRC before being committed
         /// </summary>
         [NotNull]public Page GetFreePage()
-        {
-            // try to re-use a page:
+        {            // try to re-use a page:
             var freeList = GetFreePageList();
 
             // Walk the free page list
             while (true)
             {
-                var pageId = freeList.View.GetNext();
-                if (pageId > 0) { 
+                var found = freeList.View.TryGetNext(out var pageId);
+                if (found && pageId > 0) { 
+                    if (pageId >= MAXPAGE) throw new Exception($"Free list returned a junk page (Max = {MAXPAGE}, actual = {pageId})");
                     CommitPage(freeList); // remove our page from the free list
                     var page = GetPageRaw(pageId, ignoreCrc: true);
                     if (page == null) break;
@@ -374,7 +381,9 @@ namespace StreamDb.Internal.Core
             // TODO: Check the integrity of the chain before deleting
 
             if (pageId < 3) throw new Exception("Tried to delete a core page"); // note: the page lookup table can get entirely re-written, so it's not protected
-            var free = GetFreePageList();
+            if (pageId >= MAXPAGE) throw new Exception("Tried to delete a page out of maximum range");
+
+            var freePageList = GetFreePageList();
 
             var tagged = GetPageRaw(pageId);
             if (tagged == null) return;
@@ -385,21 +394,36 @@ namespace StreamDb.Internal.Core
             var loopHash = new HashSet<int>();
 
             while (current != null) {
-                var ok = free.View.TryAdd(current.OriginalPageId);
-                loopHash.Add(current.OriginalPageId);
+                var ok = freePageList.View.TryAdd(current.OriginalPageId);
 
                 if (!ok) {
                     // need to grow free list
-                    free = WalkFreeList(free);
+                    CommitPage(freePageList);
+                    freePageList = WalkFreeList(freePageList);
                     continue;
                 } else {
-                    // commit back to storage
-                    CommitPage(free);
+                    loopHash.Add(current.OriginalPageId);
                 }
 
-                if (loopHash.Contains(current.NextPageId)) throw new Exception("Loop detected in page list.");
-                current = GetPageRaw(current.NextPageId);
+                var nextPage = current.NextPageId;
+                //NukePage(current);
+                if (nextPage < 3) break;
+                if (loopHash.Contains(nextPage)) throw new Exception("Loop detected in page list.");
+                current = GetPageRaw(nextPage);
             }
+            CommitPage(freePageList);
+        }
+
+        private void NukePage(Page target)
+        {
+            if (target == null || target.OriginalPageId < 3) return;
+
+            target.NextPageId = -1;
+            target.DocumentId = Page.FreePageGuid;
+            target.PageType = PageType.Free;
+            target.UpdateCRC();
+            CommitPage(target);
+            target.OriginalPageId = -1;
         }
 
         /// <summary>
@@ -750,11 +774,16 @@ namespace StreamDb.Internal.Core
                 newPathData.CopyTo(newDoc);
 
                 var root = ReadRoot();
-                root.PathLookupLink.WriteNewLink(newDoc.GetEndPageId(), out var expired);
-                if (expired > 3){
-                    DeletePageChain(expired);
-                }
+                var oldPathId = root.GetPathLookupBase();
+                var newPathId = newDoc.GetEndPageId();
+                root.PathLookupLink.WriteNewLink(newPathId, out var expired);
                 CommitRootCache();
+
+            //    Console.WriteLine($"Replacing path index. Original ID = {oldPathId}; New ID = {newPathId}; Expired = {expired}");
+                if (expired >= 3)
+                {
+                    DeletePageChain(expired); // this is causing or triggering issues
+                }
             }
         }
 
@@ -784,7 +813,10 @@ namespace StreamDb.Internal.Core
             var source = new PageTableStream(this, page, false);
 
             _pathIndexCache = new ReverseTrie<SerialGuid>();
-            _pathIndexCache.Defrost(source);
+            if (source.Length > 0)
+            {
+                _pathIndexCache.Defrost(source);
+            }
 
             return _pathIndexCache;
         }

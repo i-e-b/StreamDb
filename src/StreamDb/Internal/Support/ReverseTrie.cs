@@ -201,8 +201,9 @@ namespace StreamDb.Internal.Support
             }
 
             // Write some zeros to pad the end of the stream
-            EncodeValue(0, dest);
-            EncodeValue(0, dest);
+            EncodeValue(0, dest);// parent
+            EncodeValue(0, dest);// value
+            EncodeValue(0, dest);// data length
             dest.Flush();
             ms.Seek(0, SeekOrigin.Begin);
             return ms;
@@ -236,8 +237,18 @@ namespace StreamDb.Internal.Support
                 map[(char)value] = newIdx;
 
                 if (dataLength > 0) {
+                    if (src.IsEmpty()) throw new Exception("Data declared in stream run-out");
                     var data = new TValue();
-                    data.Defrost(new Substream(source, (int)dataLength));
+                    try
+                    {
+                        var substream = new Substream(source, (int)dataLength);
+                        if (substream.AvailableData() < dataLength) throw new Exception($"Stream was not long enough for declared data (expected {dataLength}, got {substream.AvailableData()})");
+                        data.Defrost(substream);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to read data (declared length = {dataLength})", ex);
+                    }
                     _store[newIdx].Data = data;
                     AddToValueCache(newIdx, data);
                 }
