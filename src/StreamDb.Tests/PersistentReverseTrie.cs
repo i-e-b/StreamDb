@@ -107,8 +107,17 @@ namespace StreamDb.Tests
             subject.Delete("Deleted: yes");
             subject.Delete("Not present"); // ok to try non-paths
 
+            // Get
             Assert.That(subject.Get("Deleted: no"), Is.EqualTo(val1), "Failed to find data to a known path");
             Assert.That(subject.Get("Deleted: yes"), Is.Null, "Should have been removed, but it's still there");
+
+            // Search
+            var all = string.Join(",",subject.Search("Deleted"));
+            Assert.That(all, Is.EqualTo("Deleted: no"));
+
+            // Look-up
+            Assert.That(subject.GetPathsForEntry(val2), Is.Empty, "Value cache was not updated");
+            Assert.That(subject.GetPathsForEntry(val1), Is.Not.Empty, "Value cache was destroyed?");
         }
 
         [Test]
@@ -124,8 +133,62 @@ namespace StreamDb.Tests
 
             Assert.That(string.Join(",", result), Is.EqualTo("my/path/1,my/path/2"));
         }
+
+        
+        [Test]
+        public void can_look_up_paths_by_value_in_live_data () {
+            // you can assign the same value to multiple paths
+            // this could be quite useful, but I'd like to be able to
+            // reverse the process -- see what paths an objects is bound
+            // to. Could be a simple set of scans (slow) or a restructuring
+            // of the internal data.
+            
+            var source = new ReverseTrie<ByteString>();
+
+            source.Add("very different", "value0");
+            source.Add("my/path/1", "value1");
+            source.Add("my/path/2", "value2");
+            source.Add("b - very different", "value0");
+            source.Add("my/other/path", "value3");
+            source.Add("my/other/path/longer", "value4");
+            source.Add("another/path/for/3", "value3");
+            source.Add("z - very different", "value0");
+
+            var result = string.Join(", ", source.GetPathsForEntry("value3"));
+
+            Assert.That(result, Is.EqualTo("my/other/path, another/path/for/3"));
+        }
+
+        [Test]
+        public void can_look_up_paths_by_value_from_serialised_data () {
+            // you can assign the same value to multiple paths
+            // this could be quite useful, but I'd like to be able to
+            // reverse the process -- see what paths an objects is bound
+            // to. Could be a simple set of scans (slow) or a restructuring
+            // of the internal data.
+            
+            var source = new ReverseTrie<ByteString>();
+
+            source.Add("very different", "value0");
+            source.Add("my/path/1", "value1");
+            source.Add("my/path/2", "value2");
+            source.Add("b - very different", "value0");
+            source.Add("my/other/path", "value3");
+            source.Add("my/other/path/longer", "value4");
+            source.Add("another/path/for/3", "value3");
+            source.Add("z - very different", "value0");
+
+            var bytes = source.Freeze();
+            var reconstituted = new ReverseTrie<ByteString>();
+            bytes.Seek(0, SeekOrigin.Begin);
+            reconstituted.Defrost(bytes);
+
+            var result = string.Join(", ", reconstituted.GetPathsForEntry("value3"));
+
+            Assert.That(result, Is.EqualTo("my/other/path, another/path/for/3"));
+        }
+
         // IEnumerable<string> GetPathsForEntry(T value)
-        // IEnumerable<string> Search(string prefix)
     }
 
     public class ReverseTrie<TValue> : IStreamSerialisable where TValue : class, IStreamSerialisable, new()
@@ -171,7 +234,10 @@ namespace StreamDb.Tests
         private const char RootValue = '\0'; // all strings point back to a single common root, at index zero.
         private const int RootParent = -1;
 
-        /// <summary>This is the core list used for storage, and produces indexes</summary>
+        /// <summary>
+        /// This is the core list used for storage, and produces indexes.
+        /// This is the only data that is serialised.
+        /// </summary>
         private readonly List<RTNode> _store;
 
         /// <summary>
@@ -180,10 +246,16 @@ namespace StreamDb.Tests
         /// </summary>
         private readonly Map<int, Map<char, int>> _fwdCache;
 
+        /// <summary>
+        /// Node-to-Path mapping, for reverse look-ups. Values are entries in the `_store` list, at the end of the path.
+        /// </summary>
+        private readonly Dictionary<TValue, HashSet<int>> _valueCache;
+
         public ReverseTrie()
         {
             _store = new List<RTNode>();
             _fwdCache = new Map<int, Map<char, int>>(() => new Map<char, int>());
+            _valueCache = new Dictionary<TValue, HashSet<int>>();
 
             RTNode.AddNewNode(RootValue, RootParent, _store);
         }
@@ -216,6 +288,7 @@ namespace StreamDb.Tests
 
             var old = _store[currentNode].Data;
             _store[currentNode].Data = value;
+            AddToValueCache(currentNode, value);
             return old;
         }
         
@@ -246,33 +319,17 @@ namespace StreamDb.Tests
             }    
         }
 
-        private IEnumerable<string> RecursiveSearch(int nodeIdx)
-        {
-            var node = _store[nodeIdx];
-            if (node.Data != null) {
-                yield return TraceNodePath(nodeIdx);
-            }
-            
-            foreach (var nextChar in _fwdCache[nodeIdx].Keys())
-            {
-                var child = _fwdCache[nodeIdx][nextChar];
-                foreach (var str in RecursiveSearch(child)) {
-                    yield return str;
-                }
-            }    
-        }
+        /// <summary>
+        /// List all paths currently bound to the given value
+        /// </summary>
+        public IEnumerable<string> GetPathsForEntry(TValue value) {
+            if (value == null) yield break;
+            if (!_valueCache.ContainsKey(value)) yield break;
 
-        private string TraceNodePath(int nodeIdx)
-        {
-            // Trace from the node back to root, build a string
-            var stack = new Stack<char>();
-            while (nodeIdx > 0) {
-                stack.Push(_store[nodeIdx].Value);
-                nodeIdx = _store[nodeIdx].Parent;
+            foreach (var index in _valueCache[value])
+            {
+                yield return TraceNodePath(index);
             }
-            var sb = new StringBuilder(stack.Count);
-            while (stack.Count > 0) sb.Append(stack.Pop());
-            return sb.ToString();
         }
 
         /// <summary>
@@ -281,7 +338,11 @@ namespace StreamDb.Tests
         public void Delete(string exactPath)
         {
             if (!TryFindNodeIndex(exactPath, out var currentNode)) return;
+            var old = _store[currentNode].Data;
             _store[currentNode].Data = default;
+            if (_valueCache.ContainsKey(old)) {
+                _valueCache[old].Remove(currentNode);
+            }
         }
 
         /// <inheritdoc />
@@ -343,6 +404,7 @@ namespace StreamDb.Tests
                     var data = new TValue();
                     data.Defrost(new Substream(source, (int)dataLength));
                     _store[newIdx].Data = data;
+                    AddToValueCache(newIdx, data);
                 }
             }
 
@@ -369,6 +431,42 @@ namespace StreamDb.Tests
                 }
             }
 
+            return sb.ToString();
+        }
+
+
+        private void AddToValueCache(int newIdx, TValue data)
+        {
+            if (!_valueCache.ContainsKey(data)) { _valueCache.Add(data, new HashSet<int>()); }
+            _valueCache[data].Add(newIdx);
+        }
+
+        private IEnumerable<string> RecursiveSearch(int nodeIdx)
+        {
+            var node = _store[nodeIdx];
+            if (node.Data != null) {
+                yield return TraceNodePath(nodeIdx);
+            }
+            
+            foreach (var nextChar in _fwdCache[nodeIdx].Keys())
+            {
+                var child = _fwdCache[nodeIdx][nextChar];
+                foreach (var str in RecursiveSearch(child)) {
+                    yield return str;
+                }
+            }    
+        }
+
+        private string TraceNodePath(int nodeIdx)
+        {
+            // Trace from the node back to root, build a string
+            var stack = new Stack<char>();
+            while (nodeIdx > 0) {
+                stack.Push(_store[nodeIdx].Value);
+                nodeIdx = _store[nodeIdx].Parent;
+            }
+            var sb = new StringBuilder(stack.Count);
+            while (stack.Count > 0) sb.Append(stack.Pop());
             return sb.ToString();
         }
 

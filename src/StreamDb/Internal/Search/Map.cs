@@ -5,7 +5,7 @@ using JetBrains.Annotations;
 
 namespace StreamDb.Internal.Search
 {
-    public class Map<TIdx, TVal> where TIdx:struct
+    public class Map<TIdx, TVal> where TIdx : struct
     {
         [NotNull] private readonly Dictionary<TIdx, TVal> _data;
         private readonly Func<TVal> _generator;
