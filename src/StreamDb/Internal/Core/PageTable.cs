@@ -83,6 +83,7 @@ namespace StreamDb.Internal.Core
                 index.Freeze().CopyTo(w.BaseStream);
                 free.Freeze().CopyTo(w.BaseStream);
                 path.Freeze().CopyTo(w.BaseStream);
+                w.Flush();
             }
             finally 
             {
@@ -406,7 +407,7 @@ namespace StreamDb.Internal.Core
                 }
 
                 var nextPage = current.NextPageId;
-                //NukePage(current);
+                NukePage(current);
                 if (nextPage < 3) break;
                 if (loopHash.Contains(nextPage)) throw new Exception("Loop detected in page list.");
                 current = GetPageRaw(nextPage);
@@ -779,7 +780,7 @@ namespace StreamDb.Internal.Core
                 root.PathLookupLink.WriteNewLink(newPathId, out var expired);
                 CommitRootCache();
 
-            //    Console.WriteLine($"Replacing path index. Original ID = {oldPathId}; New ID = {newPathId}; Expired = {expired}");
+                Console.WriteLine($"Replacing path index. Original ID = {oldPathId}; New ID = {newPathId}; Expired = {expired}");
                 if (expired >= 3)
                 {
                     DeletePageChain(expired); // this is causing or triggering issues
@@ -805,18 +806,17 @@ namespace StreamDb.Internal.Core
             if (_pathIndexCache != null) return _pathIndexCache;
             var root = ReadRoot();
             var pathBaseId = root.GetPathLookupBase();
+            Console.WriteLine($"Reading path index from pageId = {pathBaseId}");
             
             // path index is forward-writing, so we need to find the end...
             var page = GetPageRaw(pathBaseId);
 
             // load as a stream
             var source = new PageTableStream(this, page, false);
+            if (source.Length < 1) throw new Exception("Path index stream is empty");
 
             _pathIndexCache = new ReverseTrie<SerialGuid>();
-            if (source.Length > 0)
-            {
-                _pathIndexCache.Defrost(source);
-            }
+            _pathIndexCache.Defrost(source);
 
             return _pathIndexCache;
         }

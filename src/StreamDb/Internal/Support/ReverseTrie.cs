@@ -181,6 +181,7 @@ namespace StreamDb.Internal.Support
             var ms = new MemoryStream();
             var dest = new BitwiseStreamWrapper(ms, 1);
 
+            EncodeValue((uint)(_store.Count + 1), dest);
 
             foreach (var node in _store)
             {
@@ -212,14 +213,21 @@ namespace StreamDb.Internal.Support
         /// <inheritdoc />
         public void Defrost(Stream source)
         {
-            var src = new BitwiseStreamWrapper(source, 32);
+            var src = new BitwiseStreamWrapper(source, 64);
 
             // reset to starting condition
             _store.Clear();
             _fwdCache.Clear();
             RTNode.AddNewNode(RootValue, RootParent, _store);
 
-            while (!src.IsEmpty()) {
+            if (!TryDecodeValue(src, out var expectedLength)) {
+                throw new Exception("Input stream is invalid");
+            }
+            if (expectedLength < 1) throw new Exception("Prefix length is invalid");
+            expectedLength--;
+
+            for (int i = 0; i < expectedLength; i++)
+            {
                 if (!TryDecodeValue(src, out var parent)) { break; }
                 if (!TryDecodeValue(src, out var value)) throw new Exception("Invalid structure: Entry truncated at child");
 
@@ -244,13 +252,14 @@ namespace StreamDb.Internal.Support
                         var substream = new Substream(source, (int)dataLength);
                         if (substream.AvailableData() < dataLength) throw new Exception($"Stream was not long enough for declared data (expected {dataLength}, got {substream.AvailableData()})");
                         data.Defrost(substream);
+                        _store[newIdx].Data = data;
+                        AddToValueCache(newIdx, data);
                     }
                     catch (Exception ex)
                     {
+                        // What is going wrong here??
                         throw new Exception($"Failed to read data (declared length = {dataLength})", ex);
                     }
-                    _store[newIdx].Data = data;
-                    AddToValueCache(newIdx, data);
                 }
             }
         }
