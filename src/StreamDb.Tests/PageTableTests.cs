@@ -18,7 +18,7 @@ namespace StreamDb.Tests
             var ms = new MemoryStream();
             var subject = new PageTable(ms);
 
-            Assert.That(ms.Length, Is.EqualTo(Page.PageRawSize * 4), "Unexpected empty DB size");
+            Assert.That(ms.Length, Is.EqualTo(ComplexPage.PageRawSize * 4), "Unexpected empty DB size");
             Console.WriteLine($"Empty database consumes {(ms.Length / 1024)}kB");
 
             var page0 = subject.GetPageRaw(0);
@@ -87,7 +87,7 @@ namespace StreamDb.Tests
                 var subject = new PageTable(ms);
 
                 // prepare a data stream that will span multiple pages
-                for (int i = 0; i < Page.PageDataCapacity * 3.5; i++) // ensure we write a partial page at the end
+                for (int i = 0; i < ComplexPage.PageDataCapacity * 3.5; i++) // ensure we write a partial page at the end
                 {
                     fileDataStream.WriteByte(unchecked((byte)i));
                 }
@@ -131,7 +131,7 @@ namespace StreamDb.Tests
                 var subject = new PageTable(ms);
 
                 // prepare a data stream that will span multiple pages
-                for (int i = 0; i < Page.PageDataCapacity * 3; i++)
+                for (int i = 0; i < ComplexPage.PageDataCapacity * 3; i++)
                 {
                     fileDataStream.WriteByte(unchecked((byte)i));
                 }
@@ -162,7 +162,7 @@ namespace StreamDb.Tests
                 var subject = new PageTable(ms);
 
                 // prepare a data stream that will span multiple pages
-                for (int i = 0; i < Page.PageDataCapacity * 3; i++)
+                for (int i = 0; i < ComplexPage.PageDataCapacity * 3; i++)
                 {
                     fileDataStream.WriteByte(unchecked((byte)i));
                 }
@@ -194,7 +194,7 @@ namespace StreamDb.Tests
                 var subject = new PageTable(ms);
 
                 // prepare a data stream that will span multiple pages
-                for (int i = 0; i < Page.PageDataCapacity * 3; i++)
+                for (int i = 0; i < ComplexPage.PageDataCapacity * 3; i++)
                 {
                     fileDataStream.WriteByte(unchecked((byte)i));
                 }
@@ -254,7 +254,7 @@ namespace StreamDb.Tests
                 var subject = new PageTable(ms);
 
                 // prepare a data stream that will span multiple pages
-                for (int i = 0; i < Page.PageDataCapacity * 3; i++)
+                for (int i = 0; i < ComplexPage.PageDataCapacity * 3; i++)
                 {
                     fileDataStream.WriteByte(unchecked((byte)i));
                 }

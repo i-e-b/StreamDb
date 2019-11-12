@@ -10,7 +10,7 @@ namespace StreamDb.Internal.Core
     /// Represents a generalised page in the DB.
     /// At the moment these are fixed to 4kb for data + headers
     /// </summary>
-    public class Page : IStreamSerialisable {
+    public class ComplexPage : IStreamSerialisable {
 
         /// <summary>
         /// Size of a page in storage, including all headers and data
@@ -62,13 +62,13 @@ namespace StreamDb.Internal.Core
         216      27    [Prev:        int32] <-- previous page in the sequence ( -1 if this is the start )
         248      31    [Next:        int32] <-- next page in the sequence ( negative if this is the end )
         280      35    [CRC32:      uint32] <-- CRC of the entire page (including headers)
-      32832    4104    [data:   byte[4096]] <-- page contents (interpret based on PageType)
+      32768    4096    [data:   byte[4061]] <-- page contents (interpret based on PageType)
 
             */
 
         [NotNull] protected internal readonly byte[] _data;
 
-        public Page() { _data = new byte[PageRawSize]; }
+        public ComplexPage() { _data = new byte[PageRawSize]; }
 
         /// <summary>
         /// All pages belonging to a document share the same ID.

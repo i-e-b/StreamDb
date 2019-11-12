@@ -9,8 +9,8 @@ namespace StreamDb.Internal.Core
     /// </summary>
     public class PageTableStream : Stream {
         [NotNull]private readonly PageTableCore _parent;
-        [NotNull]private Page _endPage;
-        [CanBeNull]private Page _mostRecentPage; // used to reduce scanning
+        [NotNull]private ComplexPage _endPage;
+        [CanBeNull]private ComplexPage _mostRecentPage; // used to reduce scanning
         private readonly bool _enableWriting;
         private long _requestedOffset;
 
@@ -20,7 +20,7 @@ namespace StreamDb.Internal.Core
         /// <param name="parent">PageTable to be used for traversal and reading</param>
         /// <param name="endPage">The LAST page of the page chain. If a non-last page is given, the page table will be scanned to find it.</param>
         /// <param name="enableWriting">If true, writing to the stream is enabled. This is for internal use only.</param>
-        public PageTableStream(PageTableCore parent, Page endPage, bool enableWriting)
+        public PageTableStream(PageTableCore parent, ComplexPage endPage, bool enableWriting)
         {
             _requestedOffset = 0;
             _parent = parent ?? throw new Exception("Tried to stream from a disconnected page (PageTable parent is required)");
@@ -30,7 +30,7 @@ namespace StreamDb.Internal.Core
         }
 
         
-        [NotNull]private Page GetEndPage(Page page)
+        [NotNull]private ComplexPage GetEndPage(ComplexPage page)
         {
             while (page?.NextPageId > 0)
             {
@@ -50,8 +50,8 @@ namespace StreamDb.Internal.Core
             if (buffer == null) return 0;
             if (offset + count > buffer.Length) throw new Exception("Requested data exceeds buffer capacity");
 
-            var pageNumber = (int)(_requestedOffset / Page.PageDataCapacity);
-            var chunkOffset = (int)(_requestedOffset % Page.PageDataCapacity);
+            var pageNumber = (int)(_requestedOffset / ComplexPage.PageDataCapacity);
+            var chunkOffset = (int)(_requestedOffset % ComplexPage.PageDataCapacity);
 
             if (pageNumber < 0 || pageNumber > _endPage.DocumentSequence) return -1; // off the ends
 
@@ -67,7 +67,7 @@ namespace StreamDb.Internal.Core
                 var chunkEnd = Math.Min(page.PageDataLength, chunkOffset + remaining);
                 for (int i = chunkOffset; i < chunkEnd; i++)
                 {
-                    buffer[read+offset] = data[Page.PageHeadersSize + i];
+                    buffer[read+offset] = data[ComplexPage.PageHeadersSize + i];
                     read++;
                     remaining--;
                     _requestedOffset++;
@@ -85,8 +85,8 @@ namespace StreamDb.Internal.Core
         /// <inheritdoc />
         public override int ReadByte()
         {
-            var pageNumber = (int)(_requestedOffset / Page.PageDataCapacity);
-            var chunkOffset = (int)(_requestedOffset % Page.PageDataCapacity);
+            var pageNumber = (int)(_requestedOffset / ComplexPage.PageDataCapacity);
+            var chunkOffset = (int)(_requestedOffset % ComplexPage.PageDataCapacity);
 
             if (pageNumber < 0 || pageNumber > _endPage.DocumentSequence) return -1; // off the ends
 
@@ -99,7 +99,7 @@ namespace StreamDb.Internal.Core
             return data;
         }
 
-        private Page FindPage(int pageNumber)
+        private ComplexPage FindPage(int pageNumber)
         {
             if (_mostRecentPage?.DocumentSequence == pageNumber) { return _mostRecentPage; }
             var page = _parent.FindPageInChain(_endPage, pageNumber);
@@ -143,8 +143,8 @@ namespace StreamDb.Internal.Core
             if (buffer == null) return;
             if (offset + count > buffer.Length) throw new Exception("Requested data exceeds buffer capacity");
 
-            var pageNumber = (int)(_requestedOffset / Page.PageDataCapacity);
-            var chunkOffset = (int)(_requestedOffset % Page.PageDataCapacity);
+            var pageNumber = (int)(_requestedOffset / ComplexPage.PageDataCapacity);
+            var chunkOffset = (int)(_requestedOffset % ComplexPage.PageDataCapacity);
 
             if (pageNumber < 0 || pageNumber > _endPage.DocumentSequence)
                 throw new Exception($"Requested offset is out of bounds (page# {pageNumber} of total {_endPage.DocumentSequence})"); // off the ends
@@ -156,7 +156,7 @@ namespace StreamDb.Internal.Core
             var remaining = count;
             while (remaining > 0)
             {
-                var chunkEnd = Page.PageDataCapacity;
+                var chunkEnd = ComplexPage.PageDataCapacity;
                 var chunkLength = Math.Min(chunkEnd - chunkOffset, remaining);
 
                 if (chunkLength > 0)
@@ -193,7 +193,7 @@ namespace StreamDb.Internal.Core
         {
             get
             {
-                return (_endPage.DocumentSequence * Page.PageDataCapacity) + _endPage.PageDataLength;
+                return (_endPage.DocumentSequence * ComplexPage.PageDataCapacity) + _endPage.PageDataLength;
             }
         }
 

@@ -77,8 +77,8 @@ namespace StreamDb.Tests
             Console.WriteLine($"{i} attempts at random inserts. {j} succeeded ({capacity:0.#} % full), {k} failed; Took {sw.Elapsed}");
 
             var bytes = subject.Freeze();
-            Assert.That(bytes.Length, Is.LessThan(Page.PageDataCapacity));
-            Console.WriteLine($"Index page is {bytes.Length} bytes (out of {Page.PageDataCapacity})");
+            Assert.That(bytes.Length, Is.LessThan(ComplexPage.PageDataCapacity));
+            Console.WriteLine($"Index page is {bytes.Length} bytes (out of {ComplexPage.PageDataCapacity})");
         }
 
         [Test]

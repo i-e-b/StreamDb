@@ -11,7 +11,8 @@ namespace StreamDb.Internal.Core
     /// <summary>
     /// Holds crap that should be removed
     /// </summary>
-    public class PageTable:PageTableCore{
+    public class PageTable : PageTableCore, IPageTable
+    {
         /// <inheritdoc />
         public PageTable([NotNull] Stream fs) : base(fs) { 
             // Basic sanity tests
@@ -31,7 +32,7 @@ namespace StreamDb.Internal.Core
             {
                 InitialisePageTable();
             }
-            else if (fs.Length < (Page.PageRawSize*3)) // can't have a valid structure
+            else if (fs.Length < (ComplexPage.PageRawSize*3)) // can't have a valid structure
             {
                 if (fs.Length >= 8)
                 {
@@ -92,15 +93,15 @@ namespace StreamDb.Internal.Core
 
         }
         
-        [NotNull]private static Page NewPathLookupForBlankDB([NotNull]ReverseTrie<SerialGuid> path0)
+        [NotNull]private static ComplexPage NewPathLookupForBlankDB([NotNull]ReverseTrie<SerialGuid> path0)
         {
-            var page = new Page
+            var page = new ComplexPage
             {
                 PageType = PageType.PathLookup,
-                NextPageId = Page.NextIdForEmptyPage,
+                NextPageId = ComplexPage.NextIdForEmptyPage,
                 PrevPageId = -1,
                 DocumentSequence = 0,
-                DocumentId = Page.PathLookupGuid,
+                DocumentId = ComplexPage.PathLookupGuid,
                 Dirty = true,
                 FirstPageId = 3
             };
@@ -111,15 +112,15 @@ namespace StreamDb.Internal.Core
             return page;
         }
         
-        [NotNull]private static Page NewFreeListForBlankDB([NotNull]FreeListPage free0)
+        [NotNull]private static ComplexPage NewFreeListForBlankDB([NotNull]FreeListPage free0)
         {
-            var page = new Page
+            var page = new ComplexPage
             {
                 PageType = PageType.ExpiredList,
-                NextPageId = Page.NextIdForEmptyPage,
+                NextPageId = ComplexPage.NextIdForEmptyPage,
                 PrevPageId = -1,
                 DocumentSequence = 0,
-                DocumentId = Page.FreePageGuid,
+                DocumentId = ComplexPage.FreePageGuid,
                 Dirty = true,
                 FirstPageId = 2
             };
@@ -129,15 +130,15 @@ namespace StreamDb.Internal.Core
             return page;
         }
 
-        [NotNull]private static Page NewIndexForBlankDB([NotNull]IndexPage index0)
+        [NotNull]private static ComplexPage NewIndexForBlankDB([NotNull]IndexPage index0)
         {
-            var index = new Page
+            var index = new ComplexPage
             {
                 PageType = PageType.Index,
-                NextPageId = Page.NextIdForEmptyPage,
+                NextPageId = ComplexPage.NextIdForEmptyPage,
                 PrevPageId = -1,
                 DocumentSequence = 0,
-                DocumentId = Page.IndexTreeGuid,
+                DocumentId = ComplexPage.IndexTreeGuid,
                 Dirty = true,
                 FirstPageId = 1
             };
@@ -147,15 +148,15 @@ namespace StreamDb.Internal.Core
             return index;
         }
 
-        [NotNull]private static Page NewRootPage([NotNull]RootPage root0)
+        [NotNull]private static ComplexPage NewRootPage([NotNull]RootPage root0)
         {
-            var root = new Page
+            var root = new ComplexPage
             {
                 PageType = PageType.Root,
-                NextPageId = Page.NextIdForEmptyPage,
+                NextPageId = ComplexPage.NextIdForEmptyPage,
                 PrevPageId = -1,
                 DocumentSequence = 0,
-                DocumentId = Page.RootDocumentGuid,
+                DocumentId = ComplexPage.RootDocumentGuid,
                 Dirty = true,
                 FirstPageId = 0
             };
@@ -192,7 +193,7 @@ namespace StreamDb.Internal.Core
         /// <summary>
         /// Maximum page index we support
         /// </summary>
-        const long MAXPAGE = int.MaxValue / Page.PageRawSize;
+        const long MAXPAGE = int.MaxValue / ComplexPage.PageRawSize;
 
 
         /*
@@ -228,13 +229,13 @@ namespace StreamDb.Internal.Core
                 if (reader.BaseStream == null) throw new Exception("Page table base stream is invalid");
                 if (pageId < 0) return null;
 
-                var byteOffset = pageId * Page.PageRawSize;
-                var byteEnd = byteOffset + Page.PageRawSize;
+                var byteOffset = pageId * ComplexPage.PageRawSize;
+                var byteEnd = byteOffset + ComplexPage.PageRawSize;
 
                 if (reader.BaseStream.Length < byteEnd) return null;
 
                 reader.BaseStream.Seek(byteOffset, SeekOrigin.Begin);
-                return new Page<T>(pageId, new Substream(reader.BaseStream, Page.PageRawSize));
+                return new Page<T>(pageId, new Substream(reader.BaseStream, ComplexPage.PageRawSize));
             } finally {
                 _storage.Release(ref reader);
             }
@@ -245,23 +246,23 @@ namespace StreamDb.Internal.Core
         /// </summary>
         /// <param name="pageId">Page ID</param>
         /// <param name="ignoreCrc">Optional: if true, the CRC will not be checked</param>
-        [CanBeNull]public Page GetPageRaw(int pageId, bool ignoreCrc = false)
+        [CanBeNull]public ComplexPage GetPageRaw(int pageId, bool ignoreCrc = false)
         {
             var reader = _storage.AcquireReader();
             try {
                 if (reader.BaseStream == null) throw new Exception("Page table base stream is invalid");
                 if (pageId < 0) return null; // this makes page walking simpler
 
-                var byteOffset = pageId * Page.PageRawSize;
-                var byteEnd = byteOffset + Page.PageRawSize;
+                var byteOffset = pageId * ComplexPage.PageRawSize;
+                var byteEnd = byteOffset + ComplexPage.PageRawSize;
 
                 if (reader.BaseStream.Length < byteEnd) throw new Exception($"Database stream is truncated at page {pageId}");
 
                 if (byteOffset < 0) throw new Exception($"Byte offset calculated returned nonsense result (offset = {byteOffset} for pageId = {pageId})");
                 reader.BaseStream.Seek(byteOffset, SeekOrigin.Begin);
                 
-                var result = new Page();
-                result.Defrost(new Substream(reader.BaseStream, Page.PageRawSize));
+                var result = new ComplexPage();
+                result.Defrost(new Substream(reader.BaseStream, ComplexPage.PageRawSize));
                 result.OriginalPageId = pageId;
                 if (!ignoreCrc && !result.ValidateCrc()) throw new Exception($"CRC failed at page {pageId}");
                 return result;
@@ -302,7 +303,7 @@ namespace StreamDb.Internal.Core
         /// Get a free page, either by reuse or by allocating a new page.
         /// The returned page will have a correct OriginalPageID, but will need other headers reset, and a new CRC before being committed
         /// </summary>
-        [NotNull]public Page GetFreePage()
+        [NotNull]public ComplexPage GetFreePage()
         {            // try to re-use a page:
             var freeList = GetFreePageList();
 
@@ -317,9 +318,9 @@ namespace StreamDb.Internal.Core
                     if (page == null) break;
 
                     // Clear data
-                    page.NextPageId = Page.NextIdForEmptyPage;
+                    page.NextPageId = ComplexPage.NextIdForEmptyPage;
                     page.PrevPageId = -1;
-                    page.DocumentId = Page.FreePageGuid;
+                    page.DocumentId = ComplexPage.FreePageGuid;
                     page.DocumentSequence = 0;
                     page.PageType = PageType.Invalid;
 
@@ -340,7 +341,7 @@ namespace StreamDb.Internal.Core
         /// <summary>
         /// Allocate a new page (without checking for a free page)
         /// </summary>
-        [NotNull]private Page AllocatePage()
+        [NotNull]private ComplexPage AllocatePage()
         {
             lock (_newPageLock)
             {
@@ -348,13 +349,13 @@ namespace StreamDb.Internal.Core
                 try
                 {
                     var stream = w.BaseStream ?? throw new Exception("Lost connection to base stream");
-                    var pageCount = stream.Length / Page.PageRawSize;
+                    var pageCount = stream.Length / ComplexPage.PageRawSize;
 
-                    var p = new Page
+                    var p = new ComplexPage
                     {
                         OriginalPageId = (int) pageCount, // very thread sensitive!
                         PageType = PageType.Invalid,
-                        NextPageId = Page.NextIdForEmptyPage,
+                        NextPageId = ComplexPage.NextIdForEmptyPage,
                         PrevPageId = -1,
                         FirstPageId = (int) pageCount, // should update if chaining
                         DocumentSequence = 0,
@@ -438,7 +439,7 @@ namespace StreamDb.Internal.Core
             if (target == null || target.OriginalPageId < 3) return;
 
             target.NextPageId = -1;
-            target.DocumentId = Page.FreePageGuid;
+            target.DocumentId = ComplexPage.FreePageGuid;
             target.PageType = PageType.Free;
             CommitPage(target);
             target.OriginalPageId = -1;
@@ -466,12 +467,12 @@ namespace StreamDb.Internal.Core
         /// <param name="basePage">End of a page chain.</param>
         /// <param name="optionalContent">Data bytes to insert, if any</param>
         /// <param name="contentLength">Length of data to use. To use entire buffer, you can pass -1</param>
-        [NotNull]public Page ChainPage([CanBeNull] Page basePage, [CanBeNull]Stream optionalContent, int contentLength) {
+        [NotNull]public ComplexPage ChainPage([CanBeNull] ComplexPage basePage, [CanBeNull]Stream optionalContent, int contentLength) {
             if (optionalContent == null) contentLength = 0;
             else if (contentLength > optionalContent.Length) throw new Exception("Page content length requested is outside of buffer provided");
             else if (contentLength < 0) contentLength = (int)optionalContent.Length; // allow `-1` for whole buffer
 
-            var nextPageValue = Page.NextIdForEmptyPage + contentLength;
+            var nextPageValue = ComplexPage.NextIdForEmptyPage + contentLength;
 
             if (basePage == null) {
                 // special case -- make the first page of a doc
@@ -494,7 +495,7 @@ namespace StreamDb.Internal.Core
 
             if (basePage.OriginalPageId <= 0) throw new Exception("Tried to extend an invalid page");
             if (((int)basePage.PageType & (int)PageType.Free) == (int)PageType.Free) throw new Exception($"Tried to extend a freed page (State = {basePage.PageType.ToString()})");
-            if (optionalContent?.Length > Page.PageDataCapacity) throw new Exception("New page content too large");
+            if (optionalContent?.Length > ComplexPage.PageDataCapacity) throw new Exception("New page content too large");
 
             var newPage = GetFreePage();
             newPage.PrevPageId = basePage.OriginalPageId;
@@ -524,14 +525,14 @@ namespace StreamDb.Internal.Core
         public void CommitPage<T>(Page<T> page) where T : IStreamSerialisable, new()
         {
             page?.SyncView();
-            CommitPage((Page)page);
+            CommitPage((ComplexPage)page);
         }
 
         /// <summary>
         /// Write a page into the storage stream. The PageID *MUST* be correct.
         /// This method is very thread sensitive
         /// </summary>
-        public void CommitPage(Page page) {
+        public void CommitPage(ComplexPage page) {
             if (page == null || page.OriginalPageId < 0) throw new Exception("Attempted to commit an invalid page");
             page.UpdateCRC();
 
@@ -548,9 +549,9 @@ namespace StreamDb.Internal.Core
         /// Write a page into the storage stream. The PageID *MUST* be correct.
         /// This method is very thread sensitive
         /// </summary>
-        private void CommitPage([NotNull]Page page, [NotNull]BinaryWriter w)
+        private void CommitPage([NotNull]ComplexPage page, [NotNull]BinaryWriter w)
         {
-            w.Seek(page.OriginalPageId * Page.PageRawSize, SeekOrigin.Begin);
+            w.Seek(page.OriginalPageId * ComplexPage.PageRawSize, SeekOrigin.Begin);
             page.Freeze().CopyTo(w.BaseStream);
             page.Dirty = false;
         }
@@ -565,8 +566,8 @@ namespace StreamDb.Internal.Core
             if (docDataStream == null) throw new Exception("Tried to write a null stream to the database");
 
             // build new page chain for data:
-            Page page = null;
-            var buf = new byte[Page.PageDataCapacity];
+            ComplexPage page = null;
+            var buf = new byte[ComplexPage.PageDataCapacity];
             int bytes;
             while ((bytes = docDataStream.Read(buf,0,buf.Length)) > 0) {
                 var next = ChainPage(page, new MemoryStream(buf), bytes);
@@ -591,7 +592,7 @@ namespace StreamDb.Internal.Core
         /// Walk the index page list, try to find a place to insert this page.
         /// Throw if any duplicates found.
         /// </summary>
-        private void WriteToIndex([NotNull]Page lastPage)
+        private void WriteToIndex([NotNull]ComplexPage lastPage)
         {
             var index = GetIndexPageList();
 
@@ -696,7 +697,7 @@ namespace StreamDb.Internal.Core
         /// </summary>
         /// <param name="src">Any page in the chain, but preferably the end page</param>
         /// <param name="sequenceNumber">zero-based sequence number</param>
-        [CanBeNull]public Page FindPageInChain(Page src, int sequenceNumber)
+        [CanBeNull]public ComplexPage FindPageInChain(ComplexPage src, int sequenceNumber)
         {
             if (src == null) return null;
 
@@ -728,7 +729,7 @@ namespace StreamDb.Internal.Core
         /// Step forward in the page chain. Returns null if at the end.
         /// Does not extend chains.
         /// </summary>
-        [CanBeNull]public Page WalkPageChain(Page page)
+        [CanBeNull]public ComplexPage WalkPageChain(ComplexPage page)
         {
             if (page == null) return null;
             if (page.NextPageId < 0) return null;
@@ -789,9 +790,9 @@ namespace StreamDb.Internal.Core
             using (var newPathData = _pathIndexCache.Freeze())
             {
                 var raw = GetFreePage();
-                raw.NextPageId = Page.NextIdForEmptyPage;
+                raw.NextPageId = ComplexPage.NextIdForEmptyPage;
                 raw.PageType = PageType.PathLookup;
-                raw.DocumentId = Page.PathLookupGuid;
+                raw.DocumentId = ComplexPage.PathLookupGuid;
                 raw.FirstPageId = raw.OriginalPageId;
                 CommitPage(raw);
                 raw = GetPageRaw(raw.OriginalPageId);
@@ -885,7 +886,7 @@ namespace StreamDb.Internal.Core
         }
 
         /// <summary>
-        /// Remove a single path from the path index, iff the path currently matches the given document id
+        /// Delete a document page chain. Does NOT directly affect the path index or document index
         /// </summary>
         public void DeleteSinglePathForDocument(Guid docId, string path)
         {

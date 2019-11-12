@@ -10,7 +10,7 @@ namespace StreamDb.Internal.DbStructure
     /// <summary>
     /// Represents a generalised page in the DB with known contents
     /// </summary>
-    public class Page<T> : Page where T : IStreamSerialisable, new()
+    public class Page<T> : ComplexPage where T : IStreamSerialisable, new()
     {
         /// <summary>
         /// Snapshot of the page content when it was loaded
@@ -38,7 +38,7 @@ namespace StreamDb.Internal.DbStructure
         /// <summary>
         /// Wrap a raw page with a view model
         /// </summary>
-        [NotNull]public static Page<T> FromRaw(Page rawPage) {
+        [NotNull]public static Page<T> FromRaw(ComplexPage rawPage) {
             if (rawPage == null) throw new ArgumentNullException(nameof(rawPage));
             return new Page<T>(rawPage.OriginalPageId, new MemoryStream(rawPage._data));
         }
