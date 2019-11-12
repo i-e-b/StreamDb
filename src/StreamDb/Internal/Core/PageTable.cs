@@ -378,51 +378,68 @@ namespace StreamDb.Internal.Core
         /// This should be used when an add or update has caused a page link to be expired
         /// </summary>
         /// <param name="pageId">ID of any page in the chain.</param>
-        public void DeletePageChain(int pageId) {
-            // TODO: Check the integrity of the chain before deleting
-
+        /// <param name="rejectIfList">If the chain contains any of these IDs, none of the pages will be removed.</param>
+        public void DeletePageChain(int pageId, params int[] rejectIfList) {
             if (pageId < 3) throw new Exception("Tried to delete a core page"); // note: the page lookup table can get entirely re-written, so it's not protected
             if (pageId >= MAXPAGE) throw new Exception("Tried to delete a page out of maximum range");
 
+
+            // Build list and check integrity
+            var pageIdList = GetPagesInChain(rejectIfList, pageId);
+
+            // Now we have a set of page IDs to remove. Add them to the free list.
             var freePageList = GetFreePageList();
-
-            var tagged = GetPageRaw(pageId);
-            if (tagged == null) return;
-
-            var rootId = tagged.FirstPageId;
-            var current = GetPageRaw(rootId);
-
-            var loopHash = new HashSet<int>();
-
-            while (current != null) {
-                var ok = freePageList.View.TryAdd(current.OriginalPageId);
-
-                if (!ok) {
+            foreach (var pageIdToDelete in pageIdList)
+            {
+                while (!freePageList.View.TryAdd(pageIdToDelete)) {
                     // need to grow free list
                     CommitPage(freePageList);
                     freePageList = WalkFreeList(freePageList);
-                    continue;
-                } else {
-                    loopHash.Add(current.OriginalPageId);
                 }
-
-                var nextPage = current.NextPageId;
-                NukePage(current);
-                if (nextPage < 3) break;
-                if (loopHash.Contains(nextPage)) throw new Exception("Loop detected in page list.");
-                current = GetPageRaw(nextPage);
+                NukePage(pageIdToDelete);
             }
             CommitPage(freePageList);
         }
 
-        private void NukePage(Page target)
+        private List<int> GetPagesInChain(int[] rejectIfList, int pageId)
         {
+            var tagged = GetPageRaw(pageId);
+            if (tagged == null) return new List<int>();
+
+            pageId = tagged.FirstPageId;
+
+            var pageIdList = new List<int>();
+            var loopHash = new HashSet<int>();
+            var current = GetPageRaw(pageId);
+            while (current != null)
+            {
+                if (rejectIfList?.Contains(current.OriginalPageId) == true)
+                {
+                    return new List<int>(); // send back an empty set
+                }
+
+                pageIdList.Add(current.OriginalPageId);
+                loopHash.Add(current.OriginalPageId);
+                var nextPageId = current.NextPageId;
+                if (loopHash.Contains(nextPageId)) throw new Exception("Loop detected in page list.");
+                current = GetPageRaw(nextPageId);
+            }
+
+            return pageIdList;
+        }
+
+        /// <summary>
+        /// Write to the page to mark it deleted (this protects us from using after free)
+        /// </summary>
+        private void NukePage(int targetId)
+        {
+            if (targetId < 3) return;
+            var target = GetPageRaw(targetId);
             if (target == null || target.OriginalPageId < 3) return;
 
             target.NextPageId = -1;
             target.DocumentId = Page.FreePageGuid;
             target.PageType = PageType.Free;
-            target.UpdateCRC();
             CommitPage(target);
             target.OriginalPageId = -1;
         }
@@ -446,17 +463,17 @@ namespace StreamDb.Internal.Core
         /// Add a new blank page at the end of a chain.
         /// New page will carry the same document ID, first page ID, and page type.
         /// </summary>
-        /// <param name="other">End of a page chain.</param>
+        /// <param name="basePage">End of a page chain.</param>
         /// <param name="optionalContent">Data bytes to insert, if any</param>
         /// <param name="contentLength">Length of data to use. To use entire buffer, you can pass -1</param>
-        [NotNull]public Page ChainPage([CanBeNull] Page other, [CanBeNull]Stream optionalContent, int contentLength) {
+        [NotNull]public Page ChainPage([CanBeNull] Page basePage, [CanBeNull]Stream optionalContent, int contentLength) {
             if (optionalContent == null) contentLength = 0;
             else if (contentLength > optionalContent.Length) throw new Exception("Page content length requested is outside of buffer provided");
             else if (contentLength < 0) contentLength = (int)optionalContent.Length; // allow `-1` for whole buffer
 
             var nextPageValue = Page.NextIdForEmptyPage + contentLength;
 
-            if (other == null) {
+            if (basePage == null) {
                 // special case -- make the first page of a doc
                 // allowing this makes logic elsewhere a lot easier to follow
                 var first = GetFreePage();
@@ -475,27 +492,27 @@ namespace StreamDb.Internal.Core
                 return first;
             }
 
-            if (other.OriginalPageId <= 0) throw new Exception("Tried to extend an invalid page");
-            if (((int)other.PageType & (int)PageType.Free) == (int)PageType.Free) throw new Exception("Tried to extend a freed page");
+            if (basePage.OriginalPageId <= 0) throw new Exception("Tried to extend an invalid page");
+            if (((int)basePage.PageType & (int)PageType.Free) == (int)PageType.Free) throw new Exception($"Tried to extend a freed page (State = {basePage.PageType.ToString()})");
             if (optionalContent?.Length > Page.PageDataCapacity) throw new Exception("New page content too large");
 
             var newPage = GetFreePage();
-            newPage.PrevPageId = other.OriginalPageId;
-            newPage.DocumentId = other.DocumentId;
-            newPage.FirstPageId = other.FirstPageId;
+            newPage.PrevPageId = basePage.OriginalPageId;
+            newPage.DocumentId = basePage.DocumentId;
+            newPage.FirstPageId = basePage.FirstPageId;
             newPage.NextPageId = nextPageValue;
-            newPage.PageType = other.PageType;
+            newPage.PageType = basePage.PageType;
             newPage.Dirty = true;
-            newPage.DocumentSequence = (ushort) (other.DocumentSequence + 1);
+            newPage.DocumentSequence = (ushort) (basePage.DocumentSequence + 1);
 
             if (optionalContent != null) {
                 newPage.Write(optionalContent, 0, 0, contentLength);
             }
             CommitPage(newPage);
 
-            other.NextPageId = newPage.OriginalPageId; // race condition risk!
-            other.Dirty = true;
-            CommitPage(other);
+            basePage.NextPageId = newPage.OriginalPageId; // race condition risk!
+            basePage.Dirty = true;
+            CommitPage(basePage);
 
             return newPage;
         }
@@ -695,6 +712,13 @@ namespace StreamDb.Internal.Core
             for (int i = 0; i < sequenceNumber; i++)
             {
                 page = WalkPageChain(page);
+                if (page == null) {
+                    throw new Exception($"Lost page when searching for sequence number: {i} of {sequenceNumber}");
+                }
+            }
+
+            if (((int)page.PageType & (int)PageType.Free) == (int)PageType.Free) {
+                throw new Exception($"Sequence number results in bad page: {sequenceNumber}");
             }
 
             return page;
@@ -765,10 +789,12 @@ namespace StreamDb.Internal.Core
             using (var newPathData = _pathIndexCache.Freeze())
             {
                 var raw = GetFreePage();
+                raw.NextPageId = Page.NextIdForEmptyPage;
                 raw.PageType = PageType.PathLookup;
                 raw.DocumentId = Page.PathLookupGuid;
-                raw.UpdateCRC();
+                raw.FirstPageId = raw.OriginalPageId;
                 CommitPage(raw);
+                raw = GetPageRaw(raw.OriginalPageId);
 
                 var newDoc = new PageTableStream(this, raw, true);
                 newPathData.Rewind();
@@ -780,10 +806,10 @@ namespace StreamDb.Internal.Core
                 root.PathLookupLink.WriteNewLink(newPathId, out var expired);
                 CommitRootCache();
 
-                Console.WriteLine($"Replacing path index. Original ID = {oldPathId}; New ID = {newPathId}; Expired = {expired}");
+                // The 'expired' link may be an earlier page in the same chain. Don't delete the expired page if it's in the new chain.
                 if (expired >= 3)
                 {
-                    DeletePageChain(expired); // this is causing or triggering issues
+                    DeletePageChain(expired, oldPathId, newPathId); // this is causing or triggering issues
                 }
             }
         }
@@ -806,16 +832,15 @@ namespace StreamDb.Internal.Core
             if (_pathIndexCache != null) return _pathIndexCache;
             var root = ReadRoot();
             var pathBaseId = root.GetPathLookupBase();
-            Console.WriteLine($"Reading path index from pageId = {pathBaseId}");
             
             // path index is forward-writing, so we need to find the end...
             var page = GetPageRaw(pathBaseId);
 
             // load as a stream
             var source = new PageTableStream(this, page, false);
-            if (source.Length < 1) throw new Exception("Path index stream is empty");
 
             _pathIndexCache = new ReverseTrie<SerialGuid>();
+            if (source.Length <= 0) throw new Exception($"Invalid path index data from pageId = {pathBaseId}");
             _pathIndexCache.Defrost(source);
 
             return _pathIndexCache;

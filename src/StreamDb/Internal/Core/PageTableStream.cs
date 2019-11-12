@@ -146,11 +146,12 @@ namespace StreamDb.Internal.Core
             var pageNumber = (int)(_requestedOffset / Page.PageDataCapacity);
             var chunkOffset = (int)(_requestedOffset % Page.PageDataCapacity);
 
-            if (pageNumber < 0 || pageNumber > _endPage.DocumentSequence) return; // off the ends
+            if (pageNumber < 0 || pageNumber > _endPage.DocumentSequence)
+                throw new Exception($"Requested offset is out of bounds (page# {pageNumber} of total {_endPage.DocumentSequence})"); // off the ends
             // we don't support seeking outside the existing range
 
             var page = FindPage(pageNumber);
-            if (page == null) return; // out of bounds
+            if (page == null) throw new Exception("Requested offset is out of page chain bounds"); // out of bounds
 
             var remaining = count;
             while (remaining > 0)
