@@ -223,5 +223,16 @@ namespace StreamDb.Internal.Core
             _data[baseAddr + 2] = (byte) ((value >> 8) & 0xff);
             _data[baseAddr + 3] = (byte) ((value >> 0) & 0xff);
         }
+
+        /// <summary>
+        /// Set all content data bytes to zero
+        /// </summary>
+        public void ZeroAllData()
+        {
+            for (int i = PAGE_DATA; i < _data.Length; i++)
+            {
+                _data[i] = 0;
+            }
+        }
     }
 }

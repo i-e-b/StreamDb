@@ -121,7 +121,6 @@ namespace StreamDb.Internal.Core
             if (block == null) throw new Exception("Requested free pages for a null block");
             if (block.Length < 1) return;
 
-            Console.WriteLine($"Request for {block.Length} new pages");
             lock (fslock) {
                 // Exhaust the free page list to fill our block.
                 // If we run out of free pages, allocate the rest at the end of the stream
@@ -182,7 +181,6 @@ namespace StreamDb.Internal.Core
                     if (currentPage.OriginalPageId == topPageId) return i; // ran out of free data
 
                     block[i] = currentPage.OriginalPageId; // use this empty page
-                    Console.WriteLine($"Reassigned page from free chain {block[i]}");
                     currentPage = GetRawPage(linkStack.Pop()) ?? throw new Exception("Free page walk up lost");
                     currentPage.PrevPageId = -1; // break link to the recovered page
                     CommitPage(currentPage);
@@ -190,7 +188,6 @@ namespace StreamDb.Internal.Core
                 else // page has free links remaining
                 {
                     block[i] = currentPage.ReadDataInt32(length); // copy id
-                    Console.WriteLine($"Reassigned page {block[i]}");
                     currentPage.WriteDataInt32(0, length - 1); // remove from stack
                     CommitPage(currentPage); // save changes
                 }
@@ -199,13 +196,11 @@ namespace StreamDb.Internal.Core
             return i;
         }
 
-
         /// <summary>
         /// Release all pages in a chain. They can be reused on next write.
         /// If the page ID given is invalid, the release command is silently ignored
         /// </summary>
         public void ReleaseChain(int endPageId) {
-            Console.WriteLine($"Request to release {endPageId}");
             if (endPageId < 0) return;
 
             var pagesSeen = new HashSet<int>();
@@ -225,7 +220,7 @@ namespace StreamDb.Internal.Core
         /// Add a single page to release chain.
         /// This will create free list pages as required
         /// </summary>
-        private void ReleaseSinglePage(int pageId)
+        private void ReleaseSinglePage(int pageToReleaseId)
         {
             // Note: if we need to extend the free list, we should use the last page in the current list.
             // So, we can't assume pages are full based on prevPageId value.
@@ -242,25 +237,42 @@ namespace StreamDb.Internal.Core
                     SetFreeListLink(freeLink);
                     _fs.Flush();
                 }
-                
+
                 // Structure of free pages' data (see also `ReassignReleasedPages`)
                 // [Entry count: int32] -> n
                 // n * [PageId: int32]
 
                 var currentPage = GetRawPage(topPageId) ?? throw new Exception($"Lost free list page (id = {topPageId})");
-                // check if there's space on this page
-                var length = currentPage.ReadDataInt32(0);
-
-                if (length < SimplePage.MaxInt32Index) // Space remains. Write value and exit
+                while (currentPage != null)
                 {
-                    length++;
-                    currentPage.WriteDataInt32(length, pageId);
-                    currentPage.WriteDataInt32(0, length);
-                    CommitPage(currentPage);
-                    return;
+                    // check if there's space on this page
+                    var length = currentPage.ReadDataInt32(0);
+
+                    if (length < SimplePage.MaxInt32Index) // Space remains. Write value and exit
+                    {
+                        length++;
+                        currentPage.WriteDataInt32(length, pageToReleaseId);
+                        currentPage.WriteDataInt32(0, length);
+                        CommitPage(currentPage);
+                        return;
+                    }
+
+                    // walk page chain
+                    if (currentPage.PrevPageId >= 0) {
+                        currentPage = GetRawPage(currentPage.PrevPageId);
+                    } else {
+                        // use the new free page to extend the list.
+                        var newFreePage = GetRawPage(pageToReleaseId) ?? throw new Exception($"Failed to read released page {pageToReleaseId}");
+                        newFreePage.ZeroAllData();
+                        newFreePage.PrevPageId = -1;
+                        CommitPage(newFreePage);
+                        currentPage.PrevPageId = newFreePage.OriginalPageId;
+                        CommitPage(currentPage);
+                        return;
+                    }
                 }
 
-                throw new Exception("Page extension not yet implemented");
+                throw new Exception("Page extension failed");
             }
         }
 
@@ -304,7 +316,6 @@ namespace StreamDb.Internal.Core
         }
         
         
-
         [NotNull]private VersionedLink GetIndexPageLink() { return GetLink(0); }
         private void SetIndexPageLink(VersionedLink value) { SetLink(0, value); }
         

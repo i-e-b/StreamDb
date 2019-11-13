@@ -116,6 +116,15 @@ namespace StreamDb.Tests
             }
 
             Console.WriteLine($"Storage after writing data is {storage.Length} bytes");
+
+            // Try to reuse the pages
+            for (int i = 0; i < 3000; i++)
+            {
+                sampleDataStream.Seek(0, SeekOrigin.Begin);
+                toRelease.Enqueue(subject.WriteStream(sampleDataStream));
+            }
+
+            Console.WriteLine($"Storage after re-writing data is {storage.Length} bytes");
         }
 
     }
