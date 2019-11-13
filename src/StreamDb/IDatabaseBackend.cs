@@ -5,7 +5,7 @@ using JetBrains.Annotations;
 
 namespace StreamDb
 {
-    public interface IPageTable
+    public interface IDatabaseBackend
     {
         // ############## Write ##############
         

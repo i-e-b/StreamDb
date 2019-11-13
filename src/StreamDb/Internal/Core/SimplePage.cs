@@ -25,6 +25,12 @@ namespace StreamDb.Internal.Core
         /// Maximum data capacity of a page
         /// </summary>
         public const int PageDataCapacity = PageRawSize - PageHeadersSize;
+
+        /// <summary>
+        /// Maximum index that can be used
+        /// </summary>
+        public const int MaxInt32Index = (PageDataCapacity / 4) - 1;
+
         /*
          
        bits   bytes    Data layout:
@@ -94,6 +100,19 @@ namespace StreamDb.Internal.Core
             var available = source.Length - source.Position;
             if (available < PageRawSize) throw new Exception($"Page source is not large enough to load a page. Expected at least{PageRawSize}, got {available}");
             source.Read(_data, 0, PageRawSize);
+        }
+
+        
+        /// <summary>
+        /// Return the number of pages required to store a given amount of data
+        /// </summary>
+        /// <param name="bytes">Number of bytes to store</param>
+        /// <returns>Pages required</returns>
+        public static int CountRequired(long bytes)
+        {
+            var full = bytes / PageDataCapacity;
+            if (bytes % PageDataCapacity > 0) full++;
+            return (int)full;
         }
 
         
@@ -183,5 +202,26 @@ namespace StreamDb.Internal.Core
 
         private int ReadInt32(int baseAddr) { return (_data[baseAddr + 0] << 24) + (_data[baseAddr + 1] << 16) + (_data[baseAddr + 2] << 8) + (_data[baseAddr + 3] << 0); }
 
+        /// <summary>
+        /// Treat the page data as an array of Int32. Read from an index
+        /// </summary>
+        public int ReadDataInt32(int idx) {
+            if (idx < 0 || idx > MaxInt32Index) throw new Exception("Index out of range");
+            var baseAddr = PAGE_DATA + (idx * 4);
+            return (_data[baseAddr + 0] << 24) + (_data[baseAddr + 1] << 16) + (_data[baseAddr + 2] << 8) + (_data[baseAddr + 3] << 0);
+        }
+        
+        /// <summary>
+        /// Treat the page data as an array of Int32. Write to an index
+        /// </summary>
+        public void WriteDataInt32(int idx, int value)
+        {
+            if (idx < 0 || idx > MaxInt32Index) throw new Exception("Index out of range");
+            var baseAddr = PAGE_DATA + (idx * 4);
+            _data[baseAddr + 0] = (byte) ((value >> 24) & 0xff);
+            _data[baseAddr + 1] = (byte) ((value >> 16) & 0xff);
+            _data[baseAddr + 2] = (byte) ((value >> 8) & 0xff);
+            _data[baseAddr + 3] = (byte) ((value >> 0) & 0xff);
+        }
     }
 }

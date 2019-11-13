@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using JetBrains.Annotations;
 using StreamDb.Internal.Support;
@@ -13,6 +14,8 @@ namespace StreamDb.Internal.Core
     ///  - a free-list page chain
     /// All page version links point to the end of a chain.
     /// Pages cannot be updated in this store -- write a new copy and release the old one.
+    /// <para></para>
+    /// Unlike the PageTable, this handles its free page list directly and internally. The main index and path lookup are normal documents with no special position.
     /// </summary>
     public class PageStreamStorage {
         [NotNull] private readonly Stream _fs;
@@ -23,6 +26,7 @@ namespace StreamDb.Internal.Core
 
         public const int MAGIC_SIZE = 8;
         public const int HEADER_SIZE = (VersionedLink.ByteSize * 3) + MAGIC_SIZE;
+        public const int FREE_PAGE_SLOTS = 128;
 
         public PageStreamStorage([NotNull]Stream fs)
         {
@@ -76,16 +80,22 @@ namespace StreamDb.Internal.Core
         /// This ID should then be stored either inside the index document, or to one of the core versions.
         /// </summary>
         public int WriteStream(Stream dataStream) {
-            // TODO
+            if (dataStream == null) throw new Exception("Data stream must be valid");
 
             var bytesRequired = dataStream.Length - dataStream.Position;
-            var pagesRequired = CeilDiv(bytesRequired, SimplePage.PageRawSize);
+            var pagesRequired = SimplePage.CountRequired(bytesRequired);
 
             var pages = new int[pagesRequired];
-            lock (fslock) {
-                for (int i = 0; i < pagesRequired; i++) { pages[i] = GetFreePage(); }
-            }
+            AllocatePageBlock(pages);
 
+            return WriteStreamInternal(dataStream, pagesRequired, pages);
+        }
+
+        /// <summary>
+        /// Write a stream to a known set of page IDs
+        /// </summary>
+        private int WriteStreamInternal([NotNull]Stream dataStream, int pagesRequired, [NotNull]int[] pages)
+        {
             var prev = -1;
             for (int i = 0; i < pagesRequired; i++)
             {
@@ -101,30 +111,163 @@ namespace StreamDb.Internal.Core
             return prev;
         }
 
-        private int TEMP_FREE_IDX;
         /// <summary>
-        /// Reserve a new page for use, and return its ID.
-        /// This may allocate a new page
+        /// Reserve a set of new pages for use, and return their IDs.
+        /// This may allocate new pages and/or reuse released pages.
         /// </summary>
-        public int GetFreePage()
+        /// <param name="block">Array for pages required. All slots will be filled with new page IDs</param>
+        public void AllocatePageBlock(int[] block)
         {
-            // TODO: free page container and updates
-            var idx = TEMP_FREE_IDX++;
-            CommitPage(new SimplePage(idx));
-            return idx;
+            if (block == null) throw new Exception("Requested free pages for a null block");
+            if (block.Length < 1) return;
+
+            Console.WriteLine($"Request for {block.Length} new pages");
+            lock (fslock) {
+                // Exhaust the free page list to fill our block.
+                // If we run out of free pages, allocate the rest at the end of the stream
+                var stopIdx = ReassignReleasedPages(block);
+                DirectlyAllocatePages(block, stopIdx);
+            }
         }
 
         /// <summary>
-        /// Release all pages in a chain. They can be reused on next write
+        /// Allocate pages to a block without checking the free page list
+        /// </summary>
+        private void DirectlyAllocatePages([NotNull]int[] block, int startIdx)
+        {
+            for (int i = startIdx; i < block.Length; i++)
+            {
+                var pageId = (int) ((1 + _fs.Length - HEADER_SIZE) / SimplePage.PageRawSize);
+                block[i] = pageId;
+                CommitPage(new SimplePage(block[i]));
+            }
+        }
+
+        /// <summary>
+        /// Recover pages from the free list. Returns the last index that couldn't be filled (array length if everything was filled)
+        /// </summary>
+        private int ReassignReleasedPages([NotNull]int[] block)
+        {
+            var hasList = GetFreeListLink().TryGetLink(0, out var topPageId);
+            if (!hasList) return 0;
+
+            var topPage = GetRawPage(topPageId);
+            if (topPage == null) return 0;
+
+            // Structure of free pages' data (see also `ReleaseSinglePage`)
+            // [Entry count: int32] -> n
+            // n * [PageId: int32]
+
+            // The plan:
+            // - walk back through the chain
+            // - if we hit an empty end page that is not the top page, use that as the free page, and tidy up the back link. Go up a page if possible
+            // - if we're on a non empty end page, use the entries and clear them
+            // - if we're on an empty top page, give up and return our position
+
+            var linkStack = new Stack<int>();
+            var currentPage = topPage;
+            // walk down the chain
+            while (currentPage.PrevPageId >= 0) {
+                linkStack.Push(currentPage.OriginalPageId);
+                currentPage = GetRawPage(currentPage.PrevPageId) ?? throw new Exception("Free page chain is broken.");
+            }
+
+            int i;
+            for (i = 0; i < block.Length; i++) // each required page
+            {
+                // check if free list page is non-empty
+                var length = currentPage.ReadDataInt32(0);
+                if (length < 1) // page is empty
+                {
+                    if (currentPage.OriginalPageId == topPageId) return i; // ran out of free data
+
+                    block[i] = currentPage.OriginalPageId; // use this empty page
+                    Console.WriteLine($"Reassigned page from free chain {block[i]}");
+                    currentPage = GetRawPage(linkStack.Pop()) ?? throw new Exception("Free page walk up lost");
+                    currentPage.PrevPageId = -1; // break link to the recovered page
+                    CommitPage(currentPage);
+                }
+                else // page has free links remaining
+                {
+                    block[i] = currentPage.ReadDataInt32(length); // copy id
+                    Console.WriteLine($"Reassigned page {block[i]}");
+                    currentPage.WriteDataInt32(0, length - 1); // remove from stack
+                    CommitPage(currentPage); // save changes
+                }
+            }
+
+            return i;
+        }
+
+
+        /// <summary>
+        /// Release all pages in a chain. They can be reused on next write.
+        /// If the page ID given is invalid, the release command is silently ignored
         /// </summary>
         public void ReleaseChain(int endPageId) {
-            // TODO
+            Console.WriteLine($"Request to release {endPageId}");
+            if (endPageId < 0) return;
+
+            var pagesSeen = new HashSet<int>();
+            var currentPage = GetRawPage(endPageId);
+            // walk down the chain
+            while (currentPage != null)
+            {
+                if (pagesSeen.Contains(currentPage.OriginalPageId)) throw new Exception($"Loop in chain {endPageId} at ID = {currentPage.OriginalPageId}");
+                pagesSeen.Add(currentPage.OriginalPageId);
+
+                ReleaseSinglePage(currentPage.OriginalPageId);
+                currentPage = GetRawPage(currentPage.PrevPageId);
+            }
+        }
+
+        /// <summary>
+        /// Add a single page to release chain.
+        /// This will create free list pages as required
+        /// </summary>
+        private void ReleaseSinglePage(int pageId)
+        {
+            // Note: if we need to extend the free list, we should use the last page in the current list.
+            // So, we can't assume pages are full based on prevPageId value.
+            lock (fslock)
+            {
+                var freeLink = GetFreeListLink();
+                var hasList = freeLink.TryGetLink(0, out var topPageId);
+                if (!hasList) {
+                    // need to create a new page and set it up
+                    var slot = new int[1];
+                    DirectlyAllocatePages(slot, 0);
+                    freeLink.WriteNewLink(slot[0], out _);
+                    topPageId = slot[0];
+                    SetFreeListLink(freeLink);
+                    _fs.Flush();
+                }
+                
+                // Structure of free pages' data (see also `ReassignReleasedPages`)
+                // [Entry count: int32] -> n
+                // n * [PageId: int32]
+
+                var currentPage = GetRawPage(topPageId) ?? throw new Exception($"Lost free list page (id = {topPageId})");
+                // check if there's space on this page
+                var length = currentPage.ReadDataInt32(0);
+
+                if (length < SimplePage.MaxInt32Index) // Space remains. Write value and exit
+                {
+                    length++;
+                    currentPage.WriteDataInt32(length, pageId);
+                    currentPage.WriteDataInt32(0, length);
+                    CommitPage(currentPage);
+                    return;
+                }
+
+                throw new Exception("Page extension not yet implemented");
+            }
         }
 
         /// <summary>
         /// Read a page from the storage stream to memory. This will check the CRC.
         /// </summary>
-        public SimplePage GetRawPage(int pageId)
+        [CanBeNull]public SimplePage GetRawPage(int pageId)
         {
             if (pageId < 0) return null;
             lock (fslock)
@@ -160,12 +303,35 @@ namespace StreamDb.Internal.Core
             }
         }
         
+        
 
-        private int CeilDiv(long bytes, int pageSize)
+        [NotNull]private VersionedLink GetIndexPageLink() { return GetLink(0); }
+        private void SetIndexPageLink(VersionedLink value) { SetLink(0, value); }
+        
+        [NotNull]private VersionedLink GetPathLookupLink() { return GetLink(1); }
+        private void SetPathLookupLink(VersionedLink value) { SetLink(1, value); }
+
+        [NotNull]private VersionedLink GetFreeListLink() { return GetLink(2); }
+        private void SetFreeListLink(VersionedLink value) { SetLink(2, value); }
+
+        private void SetLink(int headOffset, VersionedLink value)
         {
-            var full = bytes / pageSize;
-            if (bytes % pageSize > 0) full++;
-            return (int)full;
+            if (value == null) throw new Exception("Attempted to set invalid header link");
+            lock(fslock) {
+                _fs.Seek(MAGIC_SIZE + (VersionedLink.ByteSize * headOffset), SeekOrigin.Begin);
+                value.Freeze().CopyTo(_fs);
+            }
         }
+
+        [NotNull]private VersionedLink GetLink(int headOffset)
+        {
+            lock(fslock) {
+                var result = new VersionedLink();
+                _fs.Seek(MAGIC_SIZE + (VersionedLink.ByteSize * headOffset), SeekOrigin.Begin);
+                result.Defrost(_fs);
+                return result;
+            }
+        }
+
     }
 }

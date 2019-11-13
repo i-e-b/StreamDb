@@ -24,7 +24,7 @@ namespace StreamDb
     public class Database : IDisposable
     {
         [NotNull]   private readonly Stream       _fs;
-        [NotNull]   private readonly IPageTable    _pages;
+        [NotNull]   private readonly IDatabaseBackend    _pages;
 
         private Database(Stream fs)
         {
@@ -196,7 +196,7 @@ namespace StreamDb
     /// <summary>
     /// A db implementation that does nothing (should fail all tests)
     /// </summary>
-    internal class NoOpPageTable : IPageTable
+    internal class NoOpPageTable : IDatabaseBackend
     {
         public NoOpPageTable(Stream fs) { }
 

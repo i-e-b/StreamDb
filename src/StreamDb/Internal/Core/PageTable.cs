@@ -11,7 +11,7 @@ namespace StreamDb.Internal.Core
     /// <summary>
     /// Holds crap that should be removed
     /// </summary>
-    public class PageTable : PageTableCore, IPageTable
+    public class PageTable : PageTableCore, IDatabaseBackend
     {
         /// <inheritdoc />
         public PageTable([NotNull] Stream fs) : base(fs) { 
