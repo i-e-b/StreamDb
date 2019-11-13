@@ -88,7 +88,6 @@ namespace StreamDb.Tests
             Console.WriteLine($"Storage after writing data is {storage.Length} bytes");
         }
 
-        
         [Test]
         public void freeing_a_large_number_of_pages()
         {
@@ -127,5 +126,51 @@ namespace StreamDb.Tests
             Console.WriteLine($"Storage after re-writing data is {storage.Length} bytes");
         }
 
+        [Test]
+        public void writing_to_index ()
+        {
+            var storage = new MemoryStream();
+            var subject = new PageStreamStorage(storage);
+
+            var newPageId = 123;
+            var docId = Guid.NewGuid();
+            subject.SetDocument(docId, newPageId, out var oldPageId);
+
+            var result = subject.GetDocumentHead(docId);
+
+            Assert.That(result, Is.EqualTo(newPageId));
+            Assert.That(oldPageId, Is.EqualTo(-1));
+        }
+
+        [Test]
+        public void writing_many_pages_to_the_index () {
+            var storage = new MemoryStream();
+            var subject = new PageStreamStorage(storage);
+
+            
+            var firstPageId = 123;
+            var firstDocId = Guid.NewGuid();
+            subject.SetDocument(firstDocId, firstPageId, out _);
+
+            for (int i = 0; i < 1000; i++)
+            {
+                subject.SetDocument(Guid.NewGuid(), i, out _);
+            }
+            
+            var lastPageId = 123;
+            var lastDocId = Guid.NewGuid();
+            subject.SetDocument(lastDocId, lastPageId, out _);
+
+
+            Assert.That(subject.GetDocumentHead(firstDocId), Is.EqualTo(firstPageId));
+            Assert.That(subject.GetDocumentHead(lastDocId), Is.EqualTo(lastPageId));
+            
+            Console.WriteLine($"Storage after writing data is {storage.Length} bytes");
+        }
+
+        [Test]
+        public void path_lookup_data () {
+            Assert.Fail("Not yet implemented");
+        }
     }
 }

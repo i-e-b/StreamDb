@@ -29,7 +29,7 @@ namespace StreamDb.Internal.Core
             var p = parent.GetRawPage(endPageId);
             while (p != null)
             {
-                s.Push(p.OriginalPageId);
+                s.Push(p.PageId);
                 length += p.DataLength;
                 p = parent.GetRawPage(p.PrevPageId);
             }

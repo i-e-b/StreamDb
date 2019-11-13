@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using JetBrains.Annotations;
+using StreamDb.Internal.DbStructure;
 using StreamDb.Internal.Support;
 
 namespace StreamDb.Internal.Core
@@ -92,26 +93,6 @@ namespace StreamDb.Internal.Core
         }
 
         /// <summary>
-        /// Write a stream to a known set of page IDs
-        /// </summary>
-        private int WriteStreamInternal([NotNull]Stream dataStream, int pagesRequired, [NotNull]int[] pages)
-        {
-            var prev = -1;
-            for (int i = 0; i < pagesRequired; i++)
-            {
-                var page = GetRawPage(pages[i]);
-                if (page == null) throw new Exception($"Failed to load page {pages[i]}");
-                page.Write(dataStream, 0, SimplePage.PageDataCapacity);
-                page.PrevPageId = prev;
-
-                CommitPage(page);
-                prev = page.OriginalPageId;
-            }
-
-            return prev;
-        }
-
-        /// <summary>
         /// Reserve a set of new pages for use, and return their IDs.
         /// This may allocate new pages and/or reuse released pages.
         /// </summary>
@@ -128,6 +109,193 @@ namespace StreamDb.Internal.Core
                 DirectlyAllocatePages(block, stopIdx);
             }
         }
+
+        /// <summary>
+        /// Release all pages in a chain. They can be reused on next write.
+        /// If the page ID given is invalid, the release command is silently ignored
+        /// </summary>
+        public void ReleaseChain(int endPageId) {
+            if (endPageId < 0) return;
+
+            var pagesSeen = new HashSet<int>();
+            var currentPage = GetRawPage(endPageId);
+            // walk down the chain
+            while (currentPage != null)
+            {
+                if (pagesSeen.Contains(currentPage.PageId)) throw new Exception($"Loop in chain {endPageId} at ID = {currentPage.PageId}");
+                pagesSeen.Add(currentPage.PageId);
+
+                ReleaseSinglePage(currentPage.PageId);
+                currentPage = GetRawPage(currentPage.PrevPageId);
+            }
+        }
+
+        /// <summary>
+        /// Read a page from the storage stream to memory. This will check the CRC.
+        /// </summary>
+        [CanBeNull]public SimplePage GetRawPage(int pageId)
+        {
+            if (pageId < 0) return null;
+            lock (fslock)
+            {
+                _fs.Seek(HEADER_SIZE + (pageId * SimplePage.PageRawSize), SeekOrigin.Begin);
+                var result = new SimplePage(pageId);
+                result.Defrost(_fs);
+                if (!result.ValidateCrc()) throw new Exception($"Reading page {pageId} failed CRC check");
+                return result;
+            }
+        }
+
+        /// <summary>
+        /// Write a page from memory to storage. This will update the CRC before writing.
+        /// </summary>
+        public void CommitPage(SimplePage page) {
+            if (page == null) throw new Exception("Can't commit a null page");
+            if (page.PageId < 0) throw new Exception("Page ID must be valid");
+
+            var pageId = page.PageId;
+            page.UpdateCRC();
+
+            var ms = new MemoryStream(SimplePage.PageRawSize);
+            page.Freeze().CopyTo(ms);
+            ms.Seek(0, SeekOrigin.Begin);
+            var buffer = ms.ToArray() ?? throw new Exception($"Failed to serialise page {pageId}");
+
+            lock (fslock)
+            {
+                _fs.Seek(HEADER_SIZE + (pageId * SimplePage.PageRawSize), SeekOrigin.Begin);
+                _fs.Write(buffer, 0, buffer.Length);
+                _fs.Flush();
+            }
+        }
+        
+        /// <summary>
+        /// Map a document GUID to a page ID.
+        /// If the document has an existing page, the versions will be incremented.
+        /// If a version expires, the page ID will be returned in `expiredPageId`
+        /// </summary>
+        /// <param name="documentId">Unique ID for the document</param>
+        /// <param name="newPageId">top page id for most recent version of the document</param>
+        /// <param name="expiredPageId">an expired version of the document, or `-1` if no versions have expired</param>
+        public void SetDocument(Guid documentId, int newPageId, out int expiredPageId)
+        {
+            lock (fslock)
+            {
+                var indexLink = GetIndexPageLink();
+                if (!indexLink.TryGetLink(0, out var indexTopPageId))
+                {
+                    indexTopPageId = -1;
+                }
+
+                // Try to update an existing document
+                var currentPage = GetRawPage(indexTopPageId);
+                while (currentPage != null)
+                {
+                    var indexSnap = new IndexPage();
+                    indexSnap.Defrost(currentPage.BodyStream());
+
+                    var found = indexSnap.Update(documentId, newPageId, out expiredPageId);
+                    if (found)
+                    {
+                        var stream = indexSnap.Freeze();
+                        currentPage.Write(stream, 0, stream.Length);
+                        CommitPage(currentPage);
+                        return;
+                    }
+
+                    currentPage = GetRawPage(currentPage.PrevPageId);
+                }
+
+                // Try to insert a new link in an existing index page
+                expiredPageId = -1;
+                currentPage = GetRawPage(indexTopPageId);
+                while (currentPage != null)
+                {
+                    var indexSnap = new IndexPage();
+                    indexSnap.Defrost(currentPage.BodyStream());
+
+                    var found = indexSnap.TryInsert(documentId, newPageId);
+                    if (found)
+                    {
+                        var stream = indexSnap.Freeze();
+                        currentPage.Write(stream, 0, stream.Length);
+                        CommitPage(currentPage);
+                        return;
+                    }
+
+                    currentPage = GetRawPage(currentPage.PrevPageId);
+                }
+
+                // need to extend into a new index, and write to a new version of the head
+                var newIndex = new IndexPage();
+                var ok = newIndex.TryInsert(documentId, newPageId);
+                if (!ok) throw new Exception("Failed to write index to blank index page");
+                var slot = new int[1];
+                AllocatePageBlock(slot);
+                var newPage = GetRawPage(slot[0]) ?? throw new Exception("Failed to read newly allocated page");
+                newPage.PrevPageId = indexTopPageId;
+                var newStream = newIndex.Freeze();
+                newPage.Write(newStream, 0, newStream.Length);
+                CommitPage(newPage);
+
+                // set new head link
+                indexLink.WriteNewLink(newPage.PageId, out _); // Index is always extended, we never clean it up
+                SetIndexPageLink(indexLink);
+                _fs.Flush();
+            }
+        }
+
+        /// <summary>
+        /// Get the top page ID for a document ID by reading the index.
+        /// If the document ID can't be found, returns -1
+        /// </summary>
+        public int GetDocumentHead(Guid documentId)
+        {
+            var indexLink = GetIndexPageLink();
+            if (!indexLink.TryGetLink(0, out var indexTopPageId))
+            {
+                indexTopPageId = -1;
+            }
+
+            // Try to update an existing document
+            var currentPage = GetRawPage(indexTopPageId);
+            while (currentPage != null)
+            {
+                var indexSnap = new IndexPage();
+                indexSnap.Defrost(currentPage.BodyStream());
+
+                var found = indexSnap.Search(documentId, out var link);
+                if (found)
+                {
+                    if (link.TryGetLink(0, out var result)) return result;
+                }
+
+                currentPage = GetRawPage(currentPage.PrevPageId);
+            }
+            return -1;
+        }
+
+
+        /// <summary>
+        /// Write a stream to a known set of page IDs
+        /// </summary>
+        private int WriteStreamInternal([NotNull]Stream dataStream, int pagesRequired, [NotNull]int[] pages)
+        {
+            var prev = -1;
+            for (int i = 0; i < pagesRequired; i++)
+            {
+                var page = GetRawPage(pages[i]);
+                if (page == null) throw new Exception($"Failed to load page {pages[i]}");
+                page.Write(dataStream, 0, SimplePage.PageDataCapacity);
+                page.PrevPageId = prev;
+
+                CommitPage(page);
+                prev = page.PageId;
+            }
+
+            return prev;
+        }
+
 
         /// <summary>
         /// Allocate pages to a block without checking the free page list
@@ -167,7 +335,7 @@ namespace StreamDb.Internal.Core
             var currentPage = topPage;
             // walk down the chain
             while (currentPage.PrevPageId >= 0) {
-                linkStack.Push(currentPage.OriginalPageId);
+                linkStack.Push(currentPage.PageId);
                 currentPage = GetRawPage(currentPage.PrevPageId) ?? throw new Exception("Free page chain is broken.");
             }
 
@@ -178,9 +346,9 @@ namespace StreamDb.Internal.Core
                 var length = currentPage.ReadDataInt32(0);
                 if (length < 1) // page is empty
                 {
-                    if (currentPage.OriginalPageId == topPageId) return i; // ran out of free data
+                    if (currentPage.PageId == topPageId) return i; // ran out of free data
 
-                    block[i] = currentPage.OriginalPageId; // use this empty page
+                    block[i] = currentPage.PageId; // use this empty page
                     currentPage = GetRawPage(linkStack.Pop()) ?? throw new Exception("Free page walk up lost");
                     currentPage.PrevPageId = -1; // break link to the recovered page
                     CommitPage(currentPage);
@@ -195,27 +363,7 @@ namespace StreamDb.Internal.Core
 
             return i;
         }
-
-        /// <summary>
-        /// Release all pages in a chain. They can be reused on next write.
-        /// If the page ID given is invalid, the release command is silently ignored
-        /// </summary>
-        public void ReleaseChain(int endPageId) {
-            if (endPageId < 0) return;
-
-            var pagesSeen = new HashSet<int>();
-            var currentPage = GetRawPage(endPageId);
-            // walk down the chain
-            while (currentPage != null)
-            {
-                if (pagesSeen.Contains(currentPage.OriginalPageId)) throw new Exception($"Loop in chain {endPageId} at ID = {currentPage.OriginalPageId}");
-                pagesSeen.Add(currentPage.OriginalPageId);
-
-                ReleaseSinglePage(currentPage.OriginalPageId);
-                currentPage = GetRawPage(currentPage.PrevPageId);
-            }
-        }
-
+        
         /// <summary>
         /// Add a single page to release chain.
         /// This will create free list pages as required
@@ -266,7 +414,7 @@ namespace StreamDb.Internal.Core
                         newFreePage.ZeroAllData();
                         newFreePage.PrevPageId = -1;
                         CommitPage(newFreePage);
-                        currentPage.PrevPageId = newFreePage.OriginalPageId;
+                        currentPage.PrevPageId = newFreePage.PageId;
                         CommitPage(currentPage);
                         return;
                     }
@@ -276,46 +424,6 @@ namespace StreamDb.Internal.Core
             }
         }
 
-        /// <summary>
-        /// Read a page from the storage stream to memory. This will check the CRC.
-        /// </summary>
-        [CanBeNull]public SimplePage GetRawPage(int pageId)
-        {
-            if (pageId < 0) return null;
-            lock (fslock)
-            {
-                _fs.Seek(HEADER_SIZE + (pageId * SimplePage.PageRawSize), SeekOrigin.Begin);
-                var result = new SimplePage(pageId);
-                result.Defrost(_fs);
-                if (!result.ValidateCrc()) throw new Exception($"Reading page {pageId} failed CRC check");
-                return result;
-            }
-        }
-
-        /// <summary>
-        /// Write a page from memory to storage. This will update the CRC before writing.
-        /// </summary>
-        public void CommitPage(SimplePage page) {
-            if (page == null) throw new Exception("Can't commit a null page");
-            if (page.OriginalPageId < 0) throw new Exception("Page ID must be valid");
-
-            var pageId = page.OriginalPageId;
-            page.UpdateCRC();
-
-            var ms = new MemoryStream(SimplePage.PageRawSize);
-            page.Freeze().CopyTo(ms);
-            ms.Seek(0, SeekOrigin.Begin);
-            var buffer = ms.ToArray() ?? throw new Exception($"Failed to serialise page {pageId}");
-
-            lock (fslock)
-            {
-                _fs.Seek(HEADER_SIZE + (pageId * SimplePage.PageRawSize), SeekOrigin.Begin);
-                _fs.Write(buffer, 0, buffer.Length);
-                _fs.Flush();
-            }
-        }
-        
-        
         [NotNull]private VersionedLink GetIndexPageLink() { return GetLink(0); }
         private void SetIndexPageLink(VersionedLink value) { SetLink(0, value); }
         
@@ -328,7 +436,8 @@ namespace StreamDb.Internal.Core
         private void SetLink(int headOffset, VersionedLink value)
         {
             if (value == null) throw new Exception("Attempted to set invalid header link");
-            lock(fslock) {
+            lock (fslock)
+            {
                 _fs.Seek(MAGIC_SIZE + (VersionedLink.ByteSize * headOffset), SeekOrigin.Begin);
                 value.Freeze().CopyTo(_fs);
             }
@@ -336,7 +445,8 @@ namespace StreamDb.Internal.Core
 
         [NotNull]private VersionedLink GetLink(int headOffset)
         {
-            lock(fslock) {
+            lock (fslock)
+            {
                 var result = new VersionedLink();
                 _fs.Seek(MAGIC_SIZE + (VersionedLink.ByteSize * headOffset), SeekOrigin.Begin);
                 result.Defrost(_fs);

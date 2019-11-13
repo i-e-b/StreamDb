@@ -79,13 +79,13 @@ namespace StreamDb.Internal.Core
         /// <summary>
         /// Page ID that this instance was loaded from. This is not written to storage
         /// </summary>
-        public int OriginalPageId { get; set; }
+        public int PageId { get; set; }
 
         [NotNull] protected internal readonly byte[] _data;
 
         public SimplePage(int pageId) { 
             _data = new byte[PageRawSize];
-            OriginalPageId = pageId;
+            PageId = pageId;
             DataLength = 0;
             PrevPageId = -1;
         }
@@ -234,5 +234,72 @@ namespace StreamDb.Internal.Core
                 _data[i] = 0;
             }
         }
+
+        public Stream BodyStream()
+        {
+            return new SimplePageStreamWrapper(this);
+        }
+
+        
+        /// <summary>
+        /// Wraps the body of a single page in a read-only stream
+        /// </summary>
+        public class SimplePageStreamWrapper : Stream
+        {
+            [NotNull] private readonly SimplePage _src;
+
+            public SimplePageStreamWrapper(SimplePage src)
+            {
+                _src = src;
+                Position = 0;
+            }
+
+            /// <inheritdoc />
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                if (buffer == null) return 0;
+                var pos = Position;
+                var max = (int)Math.Min(Length - pos, count);
+                for (int i = 0; i < max; i++)
+                {
+                    buffer[i + offset] = _src._data[i + pos + PAGE_DATA];
+                }
+                Position += max;
+                return max;
+            }
+
+            /// <inheritdoc />
+            public override long Seek(long offset, SeekOrigin origin)
+            {
+                switch (origin)
+                {
+                    case SeekOrigin.Begin:
+                        Position = offset;
+                        return Position;
+
+                    case SeekOrigin.Current:
+                        Position = Math.Min(Position + offset, Length);
+                        return Position;
+
+                    case SeekOrigin.End:
+                        Position = Length + offset;
+                        return Position;
+
+                    default: throw new Exception("Non exhaustive switch");
+                }
+            }
+
+            public override long Position { get; set; }
+
+            public override void SetLength(long value){ throw new InvalidOperationException("Page body stream is read only"); }
+            public override void Write(byte[] buffer, int offset, int count) { throw new InvalidOperationException("Page body stream is read only"); }
+
+            public override bool CanRead => true;
+            public override bool CanSeek => true;
+            public override bool CanWrite => false;
+            public override long Length => _src.DataLength;
+            public override void Flush() { }
+        }
     }
+
 }
