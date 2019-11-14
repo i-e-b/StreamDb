@@ -31,7 +31,7 @@ namespace StreamDb.Internal.Core
             {
                 s.Push(p.PageId);
                 length += p.DataLength;
-                p = parent.GetRawPage(p.PrevPageId);
+                p = parent.GetRawPage(p.PrevPageId); // we end up checking all the CRCs here
             }
 
             while (s.Count > 0) _pageIdCache.Add(s.Pop());
@@ -55,7 +55,7 @@ namespace StreamDb.Internal.Core
             var written = 0;
 
             while (remains > 0) {
-                var page = _parent.GetRawPage(_pageIdCache[pageIdx]);
+                var page = _parent.GetRawPage(_pageIdCache[pageIdx], ignoreCRC: true); // ignore CRCs here, as we checked them at stream creation time
                 if (page == null) throw new Exception($"Page {_pageIdCache[pageIdx]} lost between cache and read");
                 var available = (int) (page.DataLength - startingOffset);
                 if (available < 1) throw new Exception($"Read from page chain returned nonsense bytes available ({available})");

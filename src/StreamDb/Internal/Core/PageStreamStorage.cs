@@ -133,7 +133,7 @@ namespace StreamDb.Internal.Core
         /// <summary>
         /// Read a page from the storage stream to memory. This will check the CRC.
         /// </summary>
-        [CanBeNull]public SimplePage GetRawPage(int pageId)
+        [CanBeNull]public SimplePage GetRawPage(int pageId, bool ignoreCRC = false)
         {
             if (pageId < 0) return null;
             lock (fslock)
@@ -141,7 +141,7 @@ namespace StreamDb.Internal.Core
                 _fs.Seek(HEADER_SIZE + (pageId * SimplePage.PageRawSize), SeekOrigin.Begin);
                 var result = new SimplePage(pageId);
                 result.Defrost(_fs);
-                if (!result.ValidateCrc()) throw new Exception($"Reading page {pageId} failed CRC check");
+                if (!ignoreCRC && !result.ValidateCrc()) throw new Exception($"Reading page {pageId} failed CRC check");
                 return result;
             }
         }
@@ -421,6 +421,9 @@ namespace StreamDb.Internal.Core
                 _fs.Flush();
             }
         }
+
+
+
 
 
 
