@@ -107,6 +107,25 @@ namespace StreamDb.Internal.DbStructure
             return true;
         }
 
+        
+        /// <summary>
+        /// Update a link to set an invalid link. Both versions of the link will be lost.
+        /// Returns true if a change was made. False if the link was not found in this index page
+        /// </summary>
+        /// <param name="docId">ID of document to update</param>
+        /// <returns></returns>
+        public bool Remove(Guid docId)
+        {
+            // find the entry to update
+            var index = Find(docId);
+            if (index < 0 || index >= EntryCount) return false; // not found
+            if (_docIds[index] == ZeroDocId) return false; // not found
+            if (_docIds[index] != docId) throw new Exception("IndexPage.Search: Logic error");
+
+            _links[index] = new VersionedLink(); // entirely reset
+            return true;
+        }
+
         /// <summary>
         /// Find tries to find an entry index by a guid key. This is used in insert, search, update.
         /// If no such entry exists, but there is a space for it, you will get a valid index whose

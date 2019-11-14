@@ -31,7 +31,7 @@ namespace StreamDb
             _fs = fs ?? throw new ArgumentNullException(nameof(fs));
             // ####### HERE #########
             // Is where we pick the underlying engine.
-            _pages = new NoOpPageTable(_fs);
+            _pages = new PageStreamBackend(_fs);
         }
 
         /// <summary>
@@ -191,52 +191,5 @@ namespace StreamDb
         {
             _fs.Flush();
         }
-    }
-
-    /// <summary>
-    /// A db implementation that does nothing (should fail all tests)
-    /// </summary>
-    internal class NoOpPageTable : IDatabaseBackend
-    {
-        public NoOpPageTable(Stream fs) { }
-
-        /// <inheritdoc />
-        public Guid WriteDocument(Stream data)
-        {
-            return Guid.Empty;
-        }
-
-        /// <inheritdoc />
-        public Guid BindPathToDocument(string path, Guid id)
-        {
-            return Guid.Empty;
-        }
-
-        /// <inheritdoc />
-        public void DeleteDocument(Guid oldId) { }
-
-        /// <inheritdoc />
-        public void DeleteSinglePathForDocument(Guid documentId, string path) { }
-
-        /// <inheritdoc />
-        public void RemoveFromIndex(Guid id) { } 
-
-        /// <inheritdoc />
-        public void DeletePathsForDocument(Guid id) { }
-
-        /// <inheritdoc />
-        public Guid GetDocumentIdByPath(string path) { return Guid.Empty; }
-
-        /// <inheritdoc />
-        public IEnumerable<string> SearchPaths(string pathPrefix) { yield break; }
-
-        /// <inheritdoc />
-        public IEnumerable<string> ListPathsForDocument(Guid documentId) { yield break; }
-
-        /// <inheritdoc />
-        public Stream ReadDocument(Guid id) { return null; }
-
-        /// <inheritdoc />
-        public int CountFreePages() { return 0; }
     }
 }

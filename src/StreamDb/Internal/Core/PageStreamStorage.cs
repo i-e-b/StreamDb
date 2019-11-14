@@ -177,7 +177,7 @@ namespace StreamDb.Internal.Core
         /// <param name="documentId">Unique ID for the document</param>
         /// <param name="newPageId">top page id for most recent version of the document</param>
         /// <param name="expiredPageId">an expired version of the document, or `-1` if no versions have expired</param>
-        public void SetDocument(Guid documentId, int newPageId, out int expiredPageId)
+        public void BindIndex(Guid documentId, int newPageId, out int expiredPageId)
         {
             lock (fslock)
             {
@@ -246,6 +246,42 @@ namespace StreamDb.Internal.Core
         }
 
         /// <summary>
+        /// Remove a mapping from a document GUID.
+        /// The page chain is not affected.
+        /// If no such document id is bound, nothing happens
+        /// </summary>
+        public void UnbindIndex(Guid documentId)
+        {
+            lock (fslock)
+            {
+                var indexLink = GetIndexPageLink();
+                if (!indexLink.TryGetLink(0, out var indexTopPageId)) {
+                     return; // no index to unbind
+                }
+
+                // Search for the binding, and remove if found
+                var currentPage = GetRawPage(indexTopPageId);
+                while (currentPage != null)
+                {
+                    var indexSnap = new IndexPage();
+                    indexSnap.Defrost(currentPage.BodyStream());
+
+                    var found = indexSnap.Remove(documentId);
+                    if (found)
+                    {
+                        var stream = indexSnap.Freeze();
+                        currentPage.Write(stream, 0, stream.Length);
+                        CommitPage(currentPage);
+                        _fs.Flush();
+                        return;
+                    }
+
+                    currentPage = GetRawPage(currentPage.PrevPageId);
+                }
+            }
+        }
+
+        /// <summary>
         /// Get the top page ID for a document ID by reading the index.
         /// If the document ID can't be found, returns -1
         /// </summary>
@@ -275,6 +311,118 @@ namespace StreamDb.Internal.Core
             return -1;
         }
 
+        /// <summary>
+        /// Bind an exact path to a document ID.
+        /// If an existing document was bound to the same path, its ID will be returned
+        /// </summary>
+        /// <param name="path">Exact path for document</param>
+        /// <param name="documentId">new document id</param>
+        /// <param name="previousDocId">old document id that has been replaced, if any.</param>
+        public void BindPath(string path, Guid documentId, out Guid? previousDocId)
+        {
+            previousDocId = null;
+            if (string.IsNullOrEmpty(path)) throw new Exception("Path must not be null or empty");
+
+            lock (fslock)
+            {
+                // Read current path document (if it exists)
+                var pathLink = GetPathLookupLink();
+                var pathIndex = new ReverseTrie<SerialGuid>();
+                if (pathLink.TryGetLink(0, out var pathPageId))
+                {
+                    pathIndex.Defrost(GetStream(pathPageId));
+                }
+
+                // Bind the path
+                var sguid = pathIndex.Add(path, documentId);
+                if (sguid != null) previousDocId = sguid.Value;
+
+                // Write back to new chain
+                var newPageId = WriteStream(pathIndex.Freeze());
+
+                // Update version link
+                pathLink.WriteNewLink(newPageId, out var expired);
+                SetPathLookupLink(pathLink);
+
+                ReleaseChain(expired);
+                _fs.Flush();
+            }
+        }
+
+        /// <summary>
+        /// Read the path lookup, and return the DocumentID stored at the exact path.
+        /// Returns null if there is not document stored.
+        /// </summary>
+        public Guid? GetDocumentIdByPath(string exactPath)
+        {
+            var pathLink = GetPathLookupLink();
+            var pathIndex = new ReverseTrie<SerialGuid>();
+            if (!pathLink.TryGetLink(0, out var pathPageId)) return null;
+            pathIndex.Defrost(GetStream(pathPageId));
+
+            var found = pathIndex.Get(exactPath);
+            if (found == null) return null;
+            return found.Value;
+        }
+
+        /// <summary>
+        /// Return all paths currently bound for the given document ID.
+        /// If no paths are bound, an empty enumeration is given.
+        /// </summary>
+        [NotNull]public IEnumerable<string> GetPathsForDocument(Guid documentId)
+        {
+            var pathLink = GetPathLookupLink();
+            var pathIndex = new ReverseTrie<SerialGuid>();
+            if (!pathLink.TryGetLink(0, out var pathPageId)) return new string[0];
+            pathIndex.Defrost(GetStream(pathPageId));
+
+            return pathIndex.GetPathsForEntry(documentId);
+        }
+
+        /// <summary>
+        /// Return all paths currently bound that start with the given prefix.
+        /// The prefix should not be null or empty.
+        /// If no paths are bound, an empty enumeration is given.
+        /// </summary>
+        [NotNull]public IEnumerable<string> SearchPaths(string pathPrefix)
+        {
+            var pathLink = GetPathLookupLink();
+            var pathIndex = new ReverseTrie<SerialGuid>();
+            if (!pathLink.TryGetLink(0, out var pathPageId)) return new string[0];
+            pathIndex.Defrost(GetStream(pathPageId));
+
+            return pathIndex.Search(pathPrefix);
+        }
+
+        /// <summary>
+        /// Remove a path binding if it exists. If the path is not bound, nothing happens.
+        /// Linked documents are not removed.
+        /// </summary>
+        public void UnbindPath(string exactPath)
+        {
+            lock (fslock)
+            {
+                var pathLink = GetPathLookupLink();
+                var pathIndex = new ReverseTrie<SerialGuid>();
+                if (!pathLink.TryGetLink(0, out var pathPageId)) return;
+                pathIndex.Defrost(GetStream(pathPageId));
+
+                // Unbind the path
+                pathIndex.Delete(exactPath);
+
+                // Write back to new chain
+                var newPageId = WriteStream(pathIndex.Freeze());
+
+                // Update version link
+                pathLink.WriteNewLink(newPageId, out var expired);
+                SetPathLookupLink(pathLink);
+
+                ReleaseChain(expired);
+                _fs.Flush();
+            }
+        }
+
+
 
         /// <summary>
         /// Write a stream to a known set of page IDs
@@ -295,7 +443,6 @@ namespace StreamDb.Internal.Core
 
             return prev;
         }
-
 
         /// <summary>
         /// Allocate pages to a block without checking the free page list
@@ -454,87 +601,5 @@ namespace StreamDb.Internal.Core
             }
         }
 
-        /// <summary>
-        /// Bind an exact path to a document ID.
-        /// If an existing document was bound to the same path, its ID will be returned
-        /// </summary>
-        /// <param name="path">Exact path for document</param>
-        /// <param name="documentId">new document id</param>
-        /// <param name="previousDocId">old document id that has been replaced, if any.</param>
-        public void BindPath(string path, Guid documentId, out Guid? previousDocId)
-        {
-            previousDocId = null;
-            if (string.IsNullOrEmpty(path)) throw new Exception("Path must not be null or empty");
-
-            lock (fslock)
-            {
-                // Read current path document (if it exists)
-                var pathLink = GetPathLookupLink();
-                var pathIndex = new ReverseTrie<SerialGuid>();
-                if (pathLink.TryGetLink(0, out var pathPageId))
-                {
-                    pathIndex.Defrost(GetStream(pathPageId));
-                }
-
-                // Bind the path
-                var sguid = pathIndex.Add(path, documentId);
-                if (sguid != null) previousDocId = sguid.Value;
-
-                // Write back to new chain
-                var newPageId = WriteStream(pathIndex.Freeze());
-
-                // Update version link
-                pathLink.WriteNewLink(newPageId, out var expired);
-                SetPathLookupLink(pathLink);
-
-                ReleaseChain(expired);
-                _fs.Flush();
-            }
-        }
-
-        /// <summary>
-        /// Read the path lookup, and return the DocumentID stored at the exact path.
-        /// Returns null if there is not document stored.
-        /// </summary>
-        public Guid? GetDocumentIdByPath(string exactPath)
-        {
-            var pathLink = GetPathLookupLink();
-            var pathIndex = new ReverseTrie<SerialGuid>();
-            if (!pathLink.TryGetLink(0, out var pathPageId)) return null;
-            pathIndex.Defrost(GetStream(pathPageId));
-
-            var found = pathIndex.Get(exactPath);
-            if (found == null) return null;
-            return found.Value;
-        }
-
-        /// <summary>
-        /// Return all paths currently bound for the given document ID.
-        /// If no paths are bound, an empty enumeration is given.
-        /// </summary>
-        [NotNull]public IEnumerable<string> GetPathsForDocument(Guid documentId)
-        {
-            var pathLink = GetPathLookupLink();
-            var pathIndex = new ReverseTrie<SerialGuid>();
-            if (!pathLink.TryGetLink(0, out var pathPageId)) return new string[0];
-            pathIndex.Defrost(GetStream(pathPageId));
-
-            return pathIndex.GetPathsForEntry(documentId);
-        }
-
-        /// <summary>
-        /// Return all paths currently bound that start with the given prefix.
-        /// The prefix should not be null or empty.
-        /// If no paths are bound, an empty enumeration is given.
-        /// </summary>
-        [NotNull]public IEnumerable<string> SearchPaths(string pathPrefix)
-        {
-            var pathLink = GetPathLookupLink();
-            var pathIndex = new ReverseTrie<SerialGuid>();
-            if (!pathLink.TryGetLink(0, out var pathPageId)) return new string[0];
-            pathIndex.Defrost(GetStream(pathPageId));
-
-            return pathIndex.Search(pathPrefix);
-        }
     }
 }

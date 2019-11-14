@@ -134,12 +134,37 @@ namespace StreamDb.Tests
 
             var newPageId = 123;
             var docId = Guid.NewGuid();
-            subject.SetDocument(docId, newPageId, out var oldPageId);
+            subject.BindIndex(docId, newPageId, out var oldPageId);
 
             var result = subject.GetDocumentHead(docId);
 
             Assert.That(result, Is.EqualTo(newPageId));
             Assert.That(oldPageId, Is.EqualTo(-1));
+        }
+        
+        [Test]
+        public void removing_from_index ()
+        {
+            var storage = new MemoryStream();
+            var subject = new PageStreamStorage(storage);
+
+            var newPageId = 123;
+            var otherPageId = 321;
+            var docId = Guid.NewGuid();
+            var otherId = Guid.NewGuid();
+            subject.BindIndex(docId, newPageId, out var oldPageId);
+            subject.BindIndex(otherId, otherPageId, out _);
+
+            var result = subject.GetDocumentHead(docId);
+
+            Assert.That(result, Is.EqualTo(newPageId));
+            Assert.That(oldPageId, Is.EqualTo(-1));
+
+
+            subject.UnbindIndex(docId);
+            
+            Assert.That(subject.GetDocumentHead(docId), Is.EqualTo(-1), "Document is still in the index");
+            Assert.That(subject.GetDocumentHead(otherId), Is.EqualTo(otherPageId), "Lost a document we didn't target");
         }
 
         [Test]
@@ -150,16 +175,16 @@ namespace StreamDb.Tests
             
             var firstPageId = 123;
             var firstDocId = Guid.NewGuid();
-            subject.SetDocument(firstDocId, firstPageId, out _);
+            subject.BindIndex(firstDocId, firstPageId, out _);
 
             for (int i = 0; i < 1000; i++)
             {
-                subject.SetDocument(Guid.NewGuid(), i, out _);
+                subject.BindIndex(Guid.NewGuid(), i, out _);
             }
             
             var lastPageId = 123;
             var lastDocId = Guid.NewGuid();
-            subject.SetDocument(lastDocId, lastPageId, out _);
+            subject.BindIndex(lastDocId, lastPageId, out _);
 
 
             Assert.That(subject.GetDocumentHead(firstDocId), Is.EqualTo(firstPageId));
@@ -176,8 +201,8 @@ namespace StreamDb.Tests
             var val1 = Guid.NewGuid();
             var val2 = Guid.NewGuid();
 
-            subject.BindPath("this is my path", val1, out var old1);
-            subject.BindPath("this is another path", val2, out var old2);
+            subject.BindPath("this is my path", val1, out _);
+            subject.BindPath("this is another path", val2, out _);
 
             var result1 = subject.GetDocumentIdByPath("this is my path");
             var result2 = subject.GetDocumentIdByPath("this path is not presend");
@@ -238,6 +263,25 @@ namespace StreamDb.Tests
 
             var list = string.Join(",", subject.SearchPaths("find me/"));
             Assert.That(list, Is.EqualTo("find me/one,find me/two,find me/four"));
+        }
+
+        [Test]
+        public void unbinding_paths () {
+            var storage = new MemoryStream();
+            var subject = new PageStreamStorage(storage);
+            
+            subject.BindPath("find me/one"  , Guid.NewGuid(), out _);
+            subject.BindPath("find me/two"  , Guid.NewGuid(), out _);
+            subject.BindPath("miss me/three", Guid.NewGuid(), out _);
+            subject.BindPath("find me/four" , Guid.NewGuid(), out _);
+            subject.BindPath("miss me/five" , Guid.NewGuid(), out _);
+            subject.BindPath("miss me/six"  , Guid.NewGuid(), out _);
+
+            subject.UnbindPath("find me/one");
+            subject.UnbindPath("find me/four");
+
+            var list = string.Join(",", subject.SearchPaths("find me/"));
+            Assert.That(list, Is.EqualTo("find me/two"));
         }
     }
 }
