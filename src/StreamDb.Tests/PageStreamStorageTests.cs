@@ -170,7 +170,20 @@ namespace StreamDb.Tests
 
         [Test]
         public void path_lookup_data () {
-            Assert.Fail("Not yet implemented");
+            var storage = new MemoryStream();
+            var subject = new PageStreamStorage(storage);
+
+            var val1 = Guid.NewGuid();
+            var val2 = Guid.NewGuid();
+
+            subject.BindPath("this is my path", val1, out var old1);
+            subject.BindPath("this is another path", val2, out var old2);
+
+            var result1 = subject.GetDocumentIdByPath("this is my path");
+            var result2 = subject.GetDocumentIdByPath("this path is not presend");
+
+            Assert.That(result1, Is.EqualTo(val1));
+            Assert.That(result2, Is.Null);
         }
     }
 }

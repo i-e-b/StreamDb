@@ -454,5 +454,58 @@ namespace StreamDb.Internal.Core
             }
         }
 
+        /// <summary>
+        /// Bind an exact path to a document ID.
+        /// If an existing document was bound to the same path, its ID will be returned
+        /// </summary>
+        /// <param name="path">Exact path for document</param>
+        /// <param name="documentId">new document id</param>
+        /// <param name="previousDocId">old document id that has been replaced, if any.</param>
+        public void BindPath(string path, Guid documentId, out Guid? previousDocId)
+        {
+            previousDocId = null;
+            if (string.IsNullOrEmpty(path)) throw new Exception("Path must not be null or empty");
+
+            lock (fslock)
+            {
+                // Read current path document (if it exists)
+                var pathLink = GetPathLookupLink();
+                var pathIndex = new ReverseTrie<SerialGuid>();
+                if (pathLink.TryGetLink(0, out var pathPageId))
+                {
+                    pathIndex.Defrost(GetStream(pathPageId));
+                }
+
+                // Bind the path
+                var sguid = pathIndex.Add(path, documentId);
+                if (sguid != null) previousDocId = sguid.Value;
+
+                // Write back to new chain
+                var newPageId = WriteStream(pathIndex.Freeze());
+
+                // Update version link
+                pathLink.WriteNewLink(newPageId, out var expired);
+                SetPathLookupLink(pathLink);
+
+                ReleaseChain(expired);
+                _fs.Flush();
+            }
+        }
+
+        /// <summary>
+        /// Read the path lookup, and return the DocumentID stored at the exact path.
+        /// Returns null if there is not document stored.
+        /// </summary>
+        public Guid? GetDocumentIdByPath(string exactPath)
+        {
+            var pathLink = GetPathLookupLink();
+            var pathIndex = new ReverseTrie<SerialGuid>();
+            if (!pathLink.TryGetLink(0, out var pathPageId)) return null;
+            pathIndex.Defrost(GetStream(pathPageId));
+
+            var found = pathIndex.Get(exactPath);
+            if (found == null) return null;
+            return found.Value;
+        }
     }
 }

@@ -44,7 +44,8 @@ namespace StreamDb.Internal.Core
         /// <inheritdoc />
         public override int Read(byte[] buffer, int offset, int count)
         {
-            // We assume all pages are filled except the last one.
+            if (buffer == null) throw new Exception("Destination buffer must not be null");
+
             var pageIdx = (int) (Position / SimplePage.PageDataCapacity);
             var startingOffset = (int) (Position % SimplePage.PageDataCapacity);
 
@@ -58,17 +59,24 @@ namespace StreamDb.Internal.Core
                 if (page == null) throw new Exception($"Page {_pageIdCache[pageIdx]} lost between cache and read");
                 var available = (int) (page.DataLength - startingOffset);
                 if (available < 1) throw new Exception($"Read from page chain returned nonsense bytes available ({available})");
-                var stream = page.Freeze();
-                stream.Seek(startingOffset + SimplePage.PageHeadersSize, SeekOrigin.Begin);
 
-                stream.Read(buffer, written+offset, available);
-                written += available;
-                remains -= available;
+                var stream = page.BodyStream();
+                stream.Seek(startingOffset, SeekOrigin.Begin);
+
+                var request = Math.Min(available, count - written);
+                if (request < 1) throw new Exception("Read stalled");
+                if (request + written + offset > buffer.Length) throw new Exception($"Would overrun buffer ({request}+{written}+{offset} > {buffer.Length})");
+
+                var actual = stream.Read(buffer, written + offset, request);
+                if (actual < 1) throw new Exception("Stream read did not progress");
+                written += actual;
+                remains -= actual;
 
                 pageIdx++;
                 startingOffset = 0;
             }
-
+            
+            Position += written;
             return written;
         }
 

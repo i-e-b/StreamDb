@@ -235,7 +235,7 @@ namespace StreamDb.Internal.Core
             }
         }
 
-        public Stream BodyStream()
+        [NotNull]public Stream BodyStream()
         {
             return new SimplePageStreamWrapper(this);
         }
