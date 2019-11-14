@@ -185,5 +185,59 @@ namespace StreamDb.Tests
             Assert.That(result1, Is.EqualTo(val1));
             Assert.That(result2, Is.Null);
         }
+
+        [Test]
+        public void path_replacement_cycling()
+        {
+            var storage = new MemoryStream();
+            var subject = new PageStreamStorage(storage);
+
+            var valIn = Guid.NewGuid();
+            Guid? prev = null;
+
+            for (int i = 0; i < 10; i++)
+            {
+                subject.BindPath("this path will get replaced a lot", valIn, out var valOut);
+                Assert.That(valOut, Is.EqualTo(prev), $"Failed on cycle {i}");
+                prev = valIn;
+                valIn = Guid.NewGuid();
+            }
+            Console.WriteLine($"Storage after writing data is {storage.Length} bytes");
+        }
+
+        [Test]
+        public void lookup_paths_for_a_document_id()
+        {
+            var storage = new MemoryStream();
+            var subject = new PageStreamStorage(storage);
+            
+            var target = Guid.NewGuid();
+
+            subject.BindPath("one"  , target        , out _);
+            subject.BindPath("two"  , Guid.NewGuid(), out _);
+            subject.BindPath("three", target        , out _);
+            subject.BindPath("four" , target        , out _);
+            subject.BindPath("five" , Guid.NewGuid(), out _);
+            subject.BindPath("six"  , Guid.NewGuid(), out _);
+
+            var list = string.Join(",", subject.GetPathsForDocument(target));
+            Assert.That(list, Is.EqualTo("one,three,four"));
+        }
+
+        [Test]
+        public void search_paths_by_prefix () {
+            var storage = new MemoryStream();
+            var subject = new PageStreamStorage(storage);
+            
+            subject.BindPath("find me/one"  , Guid.NewGuid(), out _);
+            subject.BindPath("find me/two"  , Guid.NewGuid(), out _);
+            subject.BindPath("miss me/three", Guid.NewGuid(), out _);
+            subject.BindPath("find me/four" , Guid.NewGuid(), out _);
+            subject.BindPath("miss me/five" , Guid.NewGuid(), out _);
+            subject.BindPath("miss me/six"  , Guid.NewGuid(), out _);
+
+            var list = string.Join(",", subject.SearchPaths("find me/"));
+            Assert.That(list, Is.EqualTo("find me/one,find me/two,find me/four"));
+        }
     }
 }

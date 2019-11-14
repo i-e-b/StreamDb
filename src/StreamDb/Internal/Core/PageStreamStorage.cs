@@ -507,5 +507,34 @@ namespace StreamDb.Internal.Core
             if (found == null) return null;
             return found.Value;
         }
+
+        /// <summary>
+        /// Return all paths currently bound for the given document ID.
+        /// If no paths are bound, an empty enumeration is given.
+        /// </summary>
+        [NotNull]public IEnumerable<string> GetPathsForDocument(Guid documentId)
+        {
+            var pathLink = GetPathLookupLink();
+            var pathIndex = new ReverseTrie<SerialGuid>();
+            if (!pathLink.TryGetLink(0, out var pathPageId)) return new string[0];
+            pathIndex.Defrost(GetStream(pathPageId));
+
+            return pathIndex.GetPathsForEntry(documentId);
+        }
+
+        /// <summary>
+        /// Return all paths currently bound that start with the given prefix.
+        /// The prefix should not be null or empty.
+        /// If no paths are bound, an empty enumeration is given.
+        /// </summary>
+        [NotNull]public IEnumerable<string> SearchPaths(string pathPrefix)
+        {
+            var pathLink = GetPathLookupLink();
+            var pathIndex = new ReverseTrie<SerialGuid>();
+            if (!pathLink.TryGetLink(0, out var pathPageId)) return new string[0];
+            pathIndex.Defrost(GetStream(pathPageId));
+
+            return pathIndex.Search(pathPrefix);
+        }
     }
 }

@@ -127,7 +127,7 @@ namespace StreamDb.Internal.Support
         /// <summary>
         /// Return all known paths that start with the given prefix and contain a value
         /// </summary>
-        public IEnumerable<string> Search(string prefix)
+        [NotNull]public IEnumerable<string> Search(string prefix)
         {
             if (string.IsNullOrEmpty(prefix)) throw new Exception("Prefix must not be null or empty");
             if (!TryFindNodeIndex(prefix, out var currentNode)) yield break;
@@ -148,7 +148,7 @@ namespace StreamDb.Internal.Support
         /// <summary>
         /// List all paths currently bound to the given value
         /// </summary>
-        public IEnumerable<string> GetPathsForEntry(TValue value) {
+        [NotNull]public IEnumerable<string> GetPathsForEntry(TValue value) {
             if (value == null) yield break;
             if (!_valueCache.ContainsKey(value) || _valueCache[value] == null) yield break;
 
