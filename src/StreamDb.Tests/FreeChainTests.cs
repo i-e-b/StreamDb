@@ -13,8 +13,8 @@ namespace StreamDb.Tests
         public void default_free_chain_is_empty () {
             var subject = new FreeListPage();
 
-            var found = subject.GetNext();
-            Assert.That(found, Is.EqualTo(-1), "Got a valid page ID from an empty list");
+            var found = subject.TryGetNext(out var value);
+            Assert.That(found, Is.False, "Got a valid page ID from an empty list");
         }
 
         [Test]
@@ -51,9 +51,10 @@ namespace StreamDb.Tests
             subject.TryAdd(123);
             subject.TryAdd(234);
 
-            var found = subject.GetNext();
+            var found = subject.TryGetNext(out var value);
 
-            Assert.That(found, Is.Not.EqualTo(-1), "Lost free page");
+            Assert.That(found, Is.True, "Lost free page");
+            Assert.That(value, Is.GreaterThanOrEqualTo(0), "Lost free page");
         }
 
         [Test]
@@ -89,7 +90,7 @@ namespace StreamDb.Tests
                         break;
 
                     case 1:
-                        v = subject.GetNext();
+                        subject.TryGetNext(out v);
                         if (v < 0) break;
                         if (!expected.Contains(v)) {
                             Assert.Fail("Unexpected value");
@@ -121,8 +122,8 @@ namespace StreamDb.Tests
 
             for (i = 0; i < 100; i++)
             {
-                var free = result.GetNext();
-                if (free > 0) retrieved.Add(free);
+                var ok = result.TryGetNext(out var free);
+                if (ok && free > 0) retrieved.Add(free);
                 else break;
             }
 

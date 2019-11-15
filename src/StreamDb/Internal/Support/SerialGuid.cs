@@ -15,7 +15,8 @@ namespace StreamDb.Internal.Support
             if (source == null) throw new ArgumentNullException(nameof(source));
             
             var buf = new byte[16];
-            if (source.Read(buf, 0, 16) != 16) throw new Exception("Source stream was too short to read GUID");
+            var actual = source.Read(buf, 0, 16);
+            if (actual != 16) throw new Exception($"Source stream was too short to read GUID (expected 16, got {actual})");
             Value = new Guid(buf);
         }
 

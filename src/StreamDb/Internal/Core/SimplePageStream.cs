@@ -1,0 +1,125 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using JetBrains.Annotations;
+using StreamDb.Internal.DbStructure;
+
+namespace StreamDb.Internal.Core
+{
+    /// <summary>
+    /// READ-ONLY stream abstraction over a page-chain
+    /// </summary>
+    public class SimplePageStream : Stream
+    {
+        [NotNull]private readonly PageStreamStorage _parent;
+        /// <summary>Mapping of (position in page chain) to (global page id)</summary>
+        [NotNull]private readonly List<int> _pageIdCache;
+
+        public SimplePageStream([NotNull]PageStreamStorage parent, int endPageId)
+        {
+            _parent = parent;
+            _pageIdCache = new List<int>();
+
+            Length = LoadPageIdCache(parent, endPageId);
+        }
+
+        private long LoadPageIdCache([NotNull]PageStreamStorage parent, int endPageId)
+        {
+            long length = 0;
+            var s = new Stack<int>();
+            var p = parent.GetRawPage(endPageId);
+            while (p != null)
+            {
+                s.Push(p.PageId);
+                length += p.DataLength;
+                p = parent.GetRawPage(p.PrevPageId); // we end up checking all the CRCs here
+            }
+
+            while (s.Count > 0) _pageIdCache.Add(s.Pop());
+            return length;
+        }
+
+        /// <inheritdoc />
+        public override void Flush() { }
+
+        /// <inheritdoc />
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (buffer == null) throw new Exception("Destination buffer must not be null");
+
+            var pageIdx = (int) (Position / SimplePage.PageDataCapacity);
+            var startingOffset = (int) (Position % SimplePage.PageDataCapacity);
+
+            if (pageIdx < 0 || pageIdx >= _pageIdCache.Count) throw new Exception("Read started out of the bounds of page chain");
+
+            var remains = (int)Math.Min(count, Length - Position);
+            var written = 0;
+
+            while (remains > 0) {
+                var page = _parent.GetRawPage(_pageIdCache[pageIdx], ignoreCRC: true); // ignore CRCs here, as we checked them at stream creation time
+                if (page == null) throw new Exception($"Page {_pageIdCache[pageIdx]} lost between cache and read");
+                var available = (int) (page.DataLength - startingOffset);
+                if (available < 1) throw new Exception($"Read from page chain returned nonsense bytes available ({available})");
+
+                var stream = page.BodyStream();
+                stream.Seek(startingOffset, SeekOrigin.Begin);
+
+                var request = Math.Min(available, count - written);
+                if (request < 1) throw new Exception("Read stalled");
+                if (request + written + offset > buffer.Length) throw new Exception($"Would overrun buffer ({request}+{written}+{offset} > {buffer.Length})");
+
+                var actual = stream.Read(buffer, written + offset, request);
+                if (actual < 1) throw new Exception("Stream read did not progress");
+                written += actual;
+                remains -= actual;
+
+                pageIdx++;
+                startingOffset = 0;
+            }
+            
+            Position += written;
+            return written;
+        }
+
+        /// <inheritdoc />
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            switch (origin)
+            {
+                case SeekOrigin.Begin:
+                    Position = offset;
+                    return Position;
+
+                case SeekOrigin.Current:
+                    Position = Math.Min(Position + offset, Length);
+                    return Position;
+
+                case SeekOrigin.End:
+                    Position = Length + offset;
+                    return Position;
+
+                default: throw new Exception("Non exhaustive switch");
+            }
+        }
+
+        /// <inheritdoc />
+        public override void SetLength(long value) { throw new InvalidOperationException("Page stream is not writable"); }
+
+        /// <inheritdoc />
+        public override void Write(byte[] buffer, int offset, int count) { throw new InvalidOperationException("Page stream is not writable"); }
+
+        /// <inheritdoc />
+        public override bool CanRead => true;
+        /// <inheritdoc />
+        public override bool CanSeek => true;
+
+        /// <inheritdoc />
+        public override bool CanWrite => false;
+
+        /// <inheritdoc />
+        public override long Length { get; }
+
+        /// <inheritdoc />
+        public override long Position { get; set; }
+    }
+}

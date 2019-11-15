@@ -10,7 +10,7 @@ namespace StreamDb.Internal.Support
     /// <summary>
     /// Provides thread-locked access to a stream, as either a BinaryReader or BinaryWriter
     /// </summary>
-    internal class InterlockBinaryStream : IDisposable
+    public class InterlockBinaryStream : IDisposable
     {
         private volatile Stream _token, _master;
         private readonly bool _closeBase;

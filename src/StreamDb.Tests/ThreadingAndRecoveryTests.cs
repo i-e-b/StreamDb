@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using DispatchSharp;
 using NUnit.Framework;
@@ -26,7 +27,12 @@ namespace StreamDb.Tests
             // Write a good document, then a failure
             subject.WriteDocument("successful", MakeTestDocument());
             stream.CutoffAfter(rnd.Next(10, 900));
-            subject.WriteDocument("failure", MakeTestDocument());
+            try {
+                subject.WriteDocument("failure", MakeTestDocument());
+            }
+            catch {
+                // ignore
+            }
 
             Assert.That(stream.HasCutoff(), Is.True, "Failed to break output stream");
 
@@ -98,7 +104,11 @@ namespace StreamDb.Tests
             // Write a good document, then a failure
             subject.WriteDocument("repeat", MakeTestDocument());
             stream.CutoffAfter(rnd.Next(10, 900));
-            subject.WriteDocument("repeat", MakeTestDocument());
+            try {
+                subject.WriteDocument("repeat", MakeTestDocument());
+            } catch {
+                // Ignore
+            }
 
             Assert.That(stream.HasCutoff(), Is.True, "Failed to break output stream");
 
@@ -123,7 +133,7 @@ namespace StreamDb.Tests
 
                 var dispatcher = Dispatch<int>.CreateDefaultMultithreaded("MyTask", threadCount: 10);
 
-                const int rounds = 50; // note -- PathIndex fails somewhere around 110, it starts reading off the end of the stream
+                const int rounds = 50;
                 for (int i = 0; i < rounds; i++) dispatcher.AddWork(i);
 
                 dispatcher.AddConsumer(i=>{
@@ -145,7 +155,6 @@ namespace StreamDb.Tests
                 // Check we can still load and read the database
                 var result = Database.TryConnect(new MemoryStream(rawData));
 
-                // TODO: writing to the path lookup is the weakpoint here.
                 Console.WriteLine(string.Join(", ", result.Search("test")));
 
                 var failed = new List<int>();
@@ -187,10 +196,69 @@ namespace StreamDb.Tests
             }
         }
 
-        private static bool ShouldWait(Thread a)
-        {
-            return (a.ThreadState == ThreadState.Running) || (a.ThreadState == ThreadState.Unstarted);
+
+
+        public class IEDP {
+            public delegate int GetNextPage();
+
+            private volatile GetNextPage _pageDelegate;
+
+            public IEDP()
+            {
+                i = 0;
+                _pageDelegate = SelfPageDelegate;
+            }
+
+            public int TryGetNextPage() {
+                GetNextPage act = null;
+
+                while (act == null) {
+                    act = Interlocked.Exchange(ref _pageDelegate, null);
+                }
+                try {
+                    return act();
+                } finally {
+                    var old = Interlocked.Exchange(ref _pageDelegate, act);
+                    if (old != null) throw new Exception("Interlock failed in IEDP");
+                }
+            }
+
+            private int i;
+            private int SelfPageDelegate()
+            {
+                return i++;
+            }
         }
+
+
+        [Test]
+        public void interlock_exchange_delegate_pointer ()
+        {
+            var subject = new IEDP();
+            var switches = new bool[500];
+
+            var dispatcher = Dispatch<int>.CreateDefaultMultithreaded($"TEST: {nameof(interlock_exchange_delegate_pointer)}", threadCount: 10);
+            for (int i = 0; i < 500; i++) dispatcher.AddWork(i);
+
+            dispatcher.AddConsumer(i=>{
+                Thread.Sleep(i%20);
+                var x = subject.TryGetNextPage();
+                Console.Write($"{i}=>{x}, ");
+                switches[x] = true;
+            });
+
+            dispatcher.Start();
+            dispatcher.WaitForEmptyQueueAndStop(TimeSpan.FromSeconds(10));
+
+            Assert.That(switches.All(v=>v), Is.True, "Not all switches were set");
+
+
+            // Thought... keep a pool of about 32 slots that we keep free page indexes in. (that's about 128kb worth)
+            // Each requester goes through the IEDP to get a number from 0..31, and pulls the page from there.
+            // If there isn't a page in our slot, we hit the slow path and rebuild the slots.
+        }
+
+
 
         /// <summary>
         /// Makes a stream with 10kb of random data

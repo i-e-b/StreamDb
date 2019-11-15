@@ -15,9 +15,10 @@ A minimalist database that uses only Streams as storage, and can survive power l
 ## Goals:
 
 1. Be reliable (specifically, don't corrupt the database if the host process crashes)
-2. No 3rd party dependencies, run in most basic C# environment possible
+2. No 3rd party dependencies, run in most basic C# environment possible (i.e. .Net Standard)
 3. Be reasonably fast
 4. Don't waste too much disk space (i.e. re-use deleted pages and very old versions)
+	4.a. It's ok to waste some space if it helps reliability
 5. Small code
 
 ## Non Goals:
@@ -28,23 +29,25 @@ A minimalist database that uses only Streams as storage, and can survive power l
 
 ## To-do:
 
-* [ ] Try replacing CRC with some kind of FEC code <-- going to experiment here
-* [ ] Improve page structure to support more robust versioning
-* [ ] Improve path index to support multiple versions
-* [ ] Better free-list structure (more thread safe, better balancing)
-* [x] Thread safety tests
-* [x] Complete database entry point stuff
-* [x] Re-write path lookup serialisation, so that it's append only
-* [x] Update path lookup pages to append data
-* [x] Support partly-full pages at the page header level
-* [x] Improve data transport to reduce copying and GC
+Needs a complete rework, now I've learned a bit.
+
+
+# Version 2
+
+## Plan
+
+There needs to be a much stronger abstraction between the page bits and the documents. The writable `PageTableStream` should
+be made a *lot* more robust, and form the heart of that.
+
+The `Page<T>` thing needs to die.
+
+How much can be boil down to a really good free-list implementation? Should we use it entirely -- put the next few off-the-end pages into it?
+
+Should I separate the page header data from the content data?
 
 ## Notes:
 
-A rework of the path index is in order. I think a paged hash table (like the current doc id index) would be better.
-A rework of the page table is also probably needed.
-
-The CRC checks are taking 50% of run time.
+The CRC checks are taking 30% of run time.
 
 For testing, a stream wrapper that stops writing at a random point (but still acts like it's writing). Run that loads of times to fuzz.
 

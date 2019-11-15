@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using JetBrains.Annotations;
 
 namespace StreamDb.Internal.Support
 {
@@ -9,11 +8,6 @@ namespace StreamDb.Internal.Support
         private byte _value;
 
         public int Value { get { return _value; } }
-
-        /*
-        /// <summary> Start a new counter on zero </summary>
-        public MonotonicByte() { }
-        */
 
         /// <summary> Start a new counter with a given value </summary>
         public MonotonicByte(int value) { unchecked { _value = (byte)value; } }
@@ -37,7 +31,7 @@ namespace StreamDb.Internal.Support
             _value = (byte)source.ReadByte();
         }
 #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
-        public static int CompareTo(MonotonicByte x, object y) { if (ReferenceEquals(x, null)) { return ReferenceEquals(y, null) ? 0 : -1; } return x.CompareTo(y); }
+        public static int CompareTo(MonotonicByte x, object y) { return x.CompareTo(y); }
         public static bool operator  < (MonotonicByte x, MonotonicByte y) { return CompareTo(x, y)  < 0; }
         public static bool operator  > (MonotonicByte x, MonotonicByte y) { return CompareTo(x, y)  > 0; }
         public static bool operator <= (MonotonicByte x, MonotonicByte y) { return CompareTo(x, y) <= 0; }
@@ -50,12 +44,11 @@ namespace StreamDb.Internal.Support
         /// <inheritdoc />
         public override bool Equals(object obj)
         {
-            return (obj is PartiallyOrdered ordered) && (CompareTo(this, ordered) == 0);
+            return (obj is MonotonicByte other) && (CompareTo(this, other) == 0);
         }
 
         public int CompareTo(object obj)
         {
-            if (ReferenceEquals(this, obj)) return 0;
             if (ReferenceEquals(null, obj)) return 1;
             if (!(obj is MonotonicByte other)) return 1;
 
@@ -72,7 +65,7 @@ namespace StreamDb.Internal.Support
         /// <summary>
         /// Get a new counter that is one version ahead of this one
         /// </summary>
-        [NotNull]public MonotonicByte GetNext()
+        public MonotonicByte GetNext()
         {
             var next = new MonotonicByte(_value);
             next.Increment();

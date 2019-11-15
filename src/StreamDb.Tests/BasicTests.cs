@@ -51,10 +51,10 @@ namespace StreamDb.Tests
             }
         }
 
-        [Test]
+        [Test, Repeat(2)]
         public void can_create_a_database_with_a_file_stream ()
         {
-            using (var fs = File.Open(@"C:\Temp\StreamDBTest.dat", FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+            using (var fs = File.Open(@"C:\Temp\StreamDBTest.dat", FileMode.Truncate, FileAccess.ReadWrite, FileShare.None))
             using (var db = Database.TryConnect(fs))
             {
 
@@ -79,6 +79,21 @@ namespace StreamDb.Tests
                 }
 
                 Console.WriteLine("Database file is populated, and can be used by other tests");
+                db.Flush();
+            }
+
+            // We should be able to access the stored DB
+            
+            // We expect write operations to fail, but should be able to full access all data.
+            using (var fs = File.Open(@"C:\Temp\StreamDBTest.dat", FileMode.Open, FileAccess.Read, FileShare.None))
+            using (var db = Database.TryConnect(fs))
+            {
+
+                for (int i = 0; i < 10; i++)
+                {
+                    var found = db.Get($"testdata-{i}", out _);
+                    Assert.That(found, Is.True, $"Lost document #{i}");
+                }
             }
         }
 
@@ -142,7 +157,8 @@ namespace StreamDb.Tests
 
                 // finally, try to read the document back
                 var ex = Assert.Throws<Exception>(()=>{subject.Get("this document will be damaged", out _);}, "Database did not notice damage");
-                Assert.That(ex.Message, Contains.Substring("Data integrity check failed"));
+                Console.WriteLine(ex);
+                Assert.That(ex.Message, Contains.Substring("Data integrity check failed"), $"Message was \"{ex.Message}\"");
             }
         }
         
@@ -159,6 +175,43 @@ namespace StreamDb.Tests
 
                 var found = string.Join(", ", subject.ListPaths(docId));
                 Assert.That(found, Is.EqualTo("original/path, new/path/same/document"));
+            }
+        }
+        
+        [Test]
+        public void can_bind_a_large_number_of_paths () {
+            using (var ms = new MemoryStream())
+            {
+                const int rounds = 250;
+
+                var subject = Database.TryConnect(ms);
+
+                var docId = subject.WriteDocument("original/path", MakeTestDocument());
+
+                var preLen = ms.Length;
+
+                // Bind a load of paths
+                for (int i = 0; i < rounds; i++)
+                {
+                    subject.BindToPath(docId, $"new/path/number_{i}");
+                }
+
+                var postLen = ms.Length;
+
+                Console.WriteLine($"Storage for {rounds} similar paths took {(postLen - preLen)/1024}KB. Total DB size = {postLen/1024}KB");
+
+                // read back
+                var found1 = subject.ListPaths(docId).ToList();
+                Assert.That(found1.Count, Is.EqualTo(rounds+1), "Paths were not recorded to cache");
+
+                // serialise
+                ms.Rewind();
+                var raw = ms.ToArray();
+                var result = Database.TryConnect(new MemoryStream(raw));
+
+                // read back
+                var found = result.ListPaths(docId).ToList();
+                Assert.That(found.Count, Is.EqualTo(rounds+1), "Paths were not recorded to storage");
             }
         }
 

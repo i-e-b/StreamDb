@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using JetBrains.Annotations;
+using StreamDb.Internal.Core;
 using StreamDb.Internal.Support;
 
 namespace StreamDb.Internal.DbStructure
@@ -11,7 +12,7 @@ namespace StreamDb.Internal.DbStructure
     /// The free chain is a set of pages, each of which is just a big array of Int32 entries
     /// page zero is always occupied, and negative pages are invalid, so either of these is an empty slot in the free list
     ///
-    /// Each free page can hold 1015 page IDs (3.9MB of document data space) -- so having multiples *should* be rare
+    /// Each free page can hold 1020 page IDs (3.9MB of document data space) -- so having multiples *should* be rare
     /// When searching for a free page, we scan the free chain first. If we can't find anything we
     /// allocate more space (writing off the end of the stream).
     ///
@@ -28,7 +29,7 @@ namespace StreamDb.Internal.DbStructure
     public class FreeListPage: IStreamSerialisable
     {
         [NotNull]private readonly int[] _entries;
-        public const int Capacity = Page.PageDataCapacity / sizeof(int);
+        public const int Capacity = SimplePage.PageDataCapacity / sizeof(int);
 
         public FreeListPage()
         {
@@ -39,17 +40,18 @@ namespace StreamDb.Internal.DbStructure
         /// Return a free page if it can be found. Returns -1 if no free pages are available.
         /// The free page will be removed from the list as part of the get call.
         /// </summary>
-        public int GetNext()
+        public bool TryGetNext(out int id)
         {
+            id = -1;
             for (int i = 0; i < Capacity; i++)
             {
                 if (_entries[i] < 3) continue;
 
-                var found = _entries[i];
+                id = _entries[i];
                 _entries[i] = 0;
-                return found;
+                return true;
             }
-            return -1;
+            return false;
         }
         
         /// <summary>

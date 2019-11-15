@@ -29,6 +29,9 @@ namespace StreamDb.Internal.Support
             _startPosition = s.Position;
             _length = length;
             _endPosition = Math.Min(length + s.Position, s.Length);
+            if (_startPosition > s.Length || _startPosition > _endPosition) {
+                throw new Exception($"Invalid substream created. Starts at {_startPosition}, ends at {_endPosition}; Source length = {s.Length}");
+            }
         }
 
         /// <inheritdoc />
@@ -92,6 +95,11 @@ namespace StreamDb.Internal.Support
         {
             get { return _parent.Position - _startPosition; }
             set { _parent.Position = value + _startPosition; }
+        }
+
+        public long AvailableData()
+        {
+            return _endPosition - _startPosition;
         }
     }
 }

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using JetBrains.Annotations;
+using StreamDb.Internal.Core;
 using StreamDb.Internal.DbStructure;
 
 namespace StreamDb
@@ -24,12 +25,14 @@ namespace StreamDb
     public class Database : IDisposable
     {
         [NotNull]   private readonly Stream       _fs;
-        [NotNull]   private readonly PageTable    _pages;
+        [NotNull]   private readonly IDatabaseBackend    _pages;
 
         private Database(Stream fs)
         {
             _fs = fs ?? throw new ArgumentNullException(nameof(fs));
-            _pages = new PageTable(_fs);
+            // ####### HERE #########
+            // Is where we pick the underlying engine.
+            _pages = new PageStreamBackend(_fs);
         }
 
         /// <summary>
@@ -136,6 +139,19 @@ namespace StreamDb
             _pages.RemoveFromIndex(documentId);
             _pages.DeleteDocument(documentId);
         }
+        
+        /// <summary>
+        /// Delete a document from the database, and unbind all paths to it.
+        /// If the document does not exist, the request will be silently ignored.
+        /// </summary>
+        /// <param name="path">Any path that the document is bound to</param>
+        public void Delete(string path)
+        {
+            var id = _pages.GetDocumentIdByPath(path);
+            _pages.DeletePathsForDocument(id);
+            _pages.RemoveFromIndex(id);
+            _pages.DeleteDocument(id);
+        }
 
         /// <summary>
         /// Remove a single path binding for a document.
@@ -165,7 +181,7 @@ namespace StreamDb
         /// <param name="freePages">The number of free pages that can be written without increasing storage</param>
         public void CalculateStatistics(out int totalPages, out int freePages)
         {
-            totalPages = (int) (_fs.Length / Page.PageRawSize);
+            totalPages = (int) (_fs.Length / SimplePage.PageRawSize);
             freePages = _pages.CountFreePages();
         }
 
