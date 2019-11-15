@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using JetBrains.Annotations;
 using StreamDb.Internal.Core;
 using StreamDb.Internal.DbStructure;
@@ -32,7 +33,7 @@ namespace StreamDb
             _fs = fs ?? throw new ArgumentNullException(nameof(fs));
             // ####### HERE #########
             // Is where we pick the underlying engine.
-            _pages = new PageStreamBackend(_fs);
+            _pages = new PageStorageBackend(_fs);
         }
 
         /// <summary>
@@ -69,23 +70,17 @@ namespace StreamDb
         /// <param name="data">Stream containing document data. It will be read from current position to end.</param>
         public Guid WriteDocument(string path, Stream data)
         {
-            // TODO: would be better to improve the path index rather than lock it.
-            lock (_pathWriteLock)
+            var id = _pages.WriteDocument(data);
+            if (id == Guid.Empty) throw new Exception("Failed to write document data");
+
+            var oldId = _pages.BindPathToDocument(path, id);
+
+            if (oldId != Guid.Empty && oldId != id)
             {
-                var id = _pages.WriteDocument(data);
-                if (id == Guid.Empty) throw new Exception("Failed to write document data");
-
-                var oldId = _pages.BindPathToDocument(path, id);
-
-                if (oldId != Guid.Empty && oldId != id)
-                {
-                    // replaced an existing document
-                    // TODO: check there are no other paths bound
-                    _pages.DeleteDocument(oldId);
-                }
-                return id;
+                var others = _pages.ListPathsForDocument(oldId).Any();
+                if (!others) _pages.DeleteDocument(oldId);
             }
-
+            return id;
         }
 
         /// <summary>
@@ -181,7 +176,7 @@ namespace StreamDb
         /// <param name="freePages">The number of free pages that can be written without increasing storage</param>
         public void CalculateStatistics(out int totalPages, out int freePages)
         {
-            totalPages = (int) (_fs.Length / SimplePage.PageRawSize);
+            totalPages = (int) (_fs.Length / BasicPage.PageRawSize);
             freePages = _pages.CountFreePages();
         }
 

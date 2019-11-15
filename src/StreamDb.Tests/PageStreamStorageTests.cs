@@ -16,7 +16,7 @@ namespace StreamDb.Tests
             var sampleDataStream = new MemoryStream(sampleData);
             sampleDataStream.Seek(0, SeekOrigin.Begin);
 
-            var subject = new PageStreamStorage(storage);
+            var subject = new PageStorage(storage);
             
             Console.WriteLine($"Storage after headers is {storage.Length} bytes");
 
@@ -45,7 +45,7 @@ namespace StreamDb.Tests
             var sampleDataStream = new MemoryStream(sampleData);
             sampleDataStream.Seek(0, SeekOrigin.Begin);
 
-            var subject = new PageStreamStorage(storage);
+            var subject = new PageStorage(storage);
             
             Console.WriteLine($"Storage after headers is {storage.Length} bytes");
 
@@ -69,7 +69,7 @@ namespace StreamDb.Tests
             var sampleDataStream = new MemoryStream(sampleData);
             sampleDataStream.Seek(0, SeekOrigin.Begin);
 
-            var subject = new PageStreamStorage(storage);
+            var subject = new PageStorage(storage);
             
             Console.WriteLine($"Storage after headers is {storage.Length} bytes");
 
@@ -98,7 +98,7 @@ namespace StreamDb.Tests
             var sampleDataStream = new MemoryStream(sampleData);
             sampleDataStream.Seek(0, SeekOrigin.Begin);
 
-            var subject = new PageStreamStorage(storage);
+            var subject = new PageStorage(storage);
             
             Console.WriteLine($"Storage after headers is {storage.Length} bytes");
 
@@ -130,7 +130,7 @@ namespace StreamDb.Tests
         public void writing_to_index ()
         {
             var storage = new MemoryStream();
-            var subject = new PageStreamStorage(storage);
+            var subject = new PageStorage(storage);
 
             var newPageId = 123;
             var docId = Guid.NewGuid();
@@ -146,7 +146,7 @@ namespace StreamDb.Tests
         public void removing_from_index ()
         {
             var storage = new MemoryStream();
-            var subject = new PageStreamStorage(storage);
+            var subject = new PageStorage(storage);
 
             var newPageId = 123;
             var otherPageId = 321;
@@ -170,7 +170,7 @@ namespace StreamDb.Tests
         [Test]
         public void writing_many_pages_to_the_index () {
             var storage = new MemoryStream();
-            var subject = new PageStreamStorage(storage);
+            var subject = new PageStorage(storage);
 
             
             var firstPageId = 123;
@@ -196,7 +196,7 @@ namespace StreamDb.Tests
         [Test]
         public void path_lookup_data () {
             var storage = new MemoryStream();
-            var subject = new PageStreamStorage(storage);
+            var subject = new PageStorage(storage);
 
             var val1 = Guid.NewGuid();
             var val2 = Guid.NewGuid();
@@ -215,7 +215,7 @@ namespace StreamDb.Tests
         public void path_replacement_cycling()
         {
             var storage = new MemoryStream();
-            var subject = new PageStreamStorage(storage);
+            var subject = new PageStorage(storage);
 
             var valIn = Guid.NewGuid();
             Guid? prev = null;
@@ -234,7 +234,7 @@ namespace StreamDb.Tests
         public void lookup_paths_for_a_document_id()
         {
             var storage = new MemoryStream();
-            var subject = new PageStreamStorage(storage);
+            var subject = new PageStorage(storage);
             
             var target = Guid.NewGuid();
 
@@ -252,7 +252,7 @@ namespace StreamDb.Tests
         [Test]
         public void search_paths_by_prefix () {
             var storage = new MemoryStream();
-            var subject = new PageStreamStorage(storage);
+            var subject = new PageStorage(storage);
             
             subject.BindPath("find me/one"  , Guid.NewGuid(), out _);
             subject.BindPath("find me/two"  , Guid.NewGuid(), out _);
@@ -268,7 +268,7 @@ namespace StreamDb.Tests
         [Test]
         public void unbinding_paths () {
             var storage = new MemoryStream();
-            var subject = new PageStreamStorage(storage);
+            var subject = new PageStorage(storage);
             
             subject.BindPath("find me/one"  , Guid.NewGuid(), out _);
             subject.BindPath("find me/two"  , Guid.NewGuid(), out _);

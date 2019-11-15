@@ -11,7 +11,7 @@ namespace StreamDb.Internal.DbStructure
     /// </summary><remarks>
     /// The simplified page contains only reverse links. Technically it's less recoverable than the complex page form in the case of partial destruction.
     /// </remarks>
-    public class SimplePage : IStreamSerialisable {
+    public class BasicPage : IStreamSerialisable {
         
         /// <summary>
         /// Size of a page in storage, including all headers and data
@@ -83,7 +83,7 @@ namespace StreamDb.Internal.DbStructure
 
         [NotNull] protected internal readonly byte[] _data;
 
-        public SimplePage(int pageId) { 
+        public BasicPage(int pageId) { 
             _data = new byte[PageRawSize];
             PageId = pageId;
             DataLength = 0;
@@ -246,11 +246,11 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         public class SimplePageStreamWrapper : Stream
         {
-            [NotNull] private readonly SimplePage _src;
+            [NotNull] private readonly BasicPage _src;
 
-            public SimplePageStreamWrapper(SimplePage src)
+            public SimplePageStreamWrapper(BasicPage src)
             {
-                _src = src;
+                _src = src ?? throw new Exception("Page stream wrapper must not be created with a null page");
                 Position = 0;
             }
 

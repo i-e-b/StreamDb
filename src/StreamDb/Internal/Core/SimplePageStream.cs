@@ -11,11 +11,11 @@ namespace StreamDb.Internal.Core
     /// </summary>
     public class SimplePageStream : Stream
     {
-        [NotNull]private readonly PageStreamStorage _parent;
+        [NotNull]private readonly PageStorage _parent;
         /// <summary>Mapping of (position in page chain) to (global page id)</summary>
         [NotNull]private readonly List<int> _pageIdCache;
 
-        public SimplePageStream([NotNull]PageStreamStorage parent, int endPageId)
+        public SimplePageStream([NotNull]PageStorage parent, int endPageId)
         {
             _parent = parent;
             _pageIdCache = new List<int>();
@@ -23,7 +23,7 @@ namespace StreamDb.Internal.Core
             Length = LoadPageIdCache(parent, endPageId);
         }
 
-        private long LoadPageIdCache([NotNull]PageStreamStorage parent, int endPageId)
+        private long LoadPageIdCache([NotNull]PageStorage parent, int endPageId)
         {
             long length = 0;
             var s = new Stack<int>();
@@ -47,8 +47,8 @@ namespace StreamDb.Internal.Core
         {
             if (buffer == null) throw new Exception("Destination buffer must not be null");
 
-            var pageIdx = (int) (Position / SimplePage.PageDataCapacity);
-            var startingOffset = (int) (Position % SimplePage.PageDataCapacity);
+            var pageIdx = (int) (Position / BasicPage.PageDataCapacity);
+            var startingOffset = (int) (Position % BasicPage.PageDataCapacity);
 
             if (pageIdx < 0 || pageIdx >= _pageIdCache.Count) throw new Exception("Read started out of the bounds of page chain");
 

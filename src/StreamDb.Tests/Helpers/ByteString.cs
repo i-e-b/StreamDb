@@ -1,7 +1,8 @@
 ﻿using System.IO;
 using System.Text;
+using StreamDb.Internal.Support;
 
-namespace StreamDb.Internal.Support
+namespace StreamDb.Tests.Helpers
 {
     public class ByteString : PartiallyOrdered, IStreamSerialisable {
         private string _str;

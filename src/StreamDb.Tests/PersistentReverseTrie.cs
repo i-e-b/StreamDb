@@ -2,6 +2,7 @@
 using System.IO;
 using NUnit.Framework;
 using StreamDb.Internal.Support;
+using StreamDb.Tests.Helpers;
 
 namespace StreamDb.Tests
 {

@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 using JetBrains.Annotations;
 
-namespace StreamDb.Internal.Support
+namespace StreamDb.Tests.Helpers
 {
     public static class Extensions
     {
@@ -42,7 +42,7 @@ namespace StreamDb.Internal.Support
             return s;
         }
 
-        [NotNull]private static readonly Random rnd = new Random();  
+        private static readonly Random rnd = new Random();  
 
         /// <summary>
         /// Randomise the order of the supplied list.

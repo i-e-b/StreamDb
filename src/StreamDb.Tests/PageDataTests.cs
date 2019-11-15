@@ -1,5 +1,4 @@
 ﻿using NUnit.Framework;
-using StreamDb.Internal.Core;
 using StreamDb.Internal.DbStructure;
 
 // ReSharper disable PossibleNullReferenceException
@@ -11,7 +10,7 @@ namespace StreamDb.Tests
 
         [Test]
         public void simple_page_fields_round_trip () {
-            var subject = new SimplePage(0);
+            var subject = new BasicPage(0);
 
             Assert.That(subject.DataLength, Is.EqualTo(0), "Unexpected default length");
             Assert.That(subject.PrevPageId, Is.EqualTo(-1), "Unexpected default page ID");
@@ -25,7 +24,7 @@ namespace StreamDb.Tests
         
         [Test]
         public void simple_page_crc_checks_work () {
-            var subject = new SimplePage(0)
+            var subject = new BasicPage(0)
             {
                 DataLength = 0,
                 PrevPageId = 20,

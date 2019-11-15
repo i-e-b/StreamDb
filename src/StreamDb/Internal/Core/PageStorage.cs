@@ -18,7 +18,7 @@ namespace StreamDb.Internal.Core
     /// <para></para>
     /// Unlike the PageTable, this handles its free page list directly and internally. The main index and path lookup are normal documents with no special position.
     /// </summary>
-    public class PageStreamStorage {
+    public class PageStorage {
         [NotNull] private readonly Stream _fs;
         [NotNull] private readonly object fslock = new object();
 
@@ -31,7 +31,7 @@ namespace StreamDb.Internal.Core
         public const int HEADER_SIZE = (VersionedLink.ByteSize * 3) + MAGIC_SIZE;
         public const int FREE_PAGE_SLOTS = 128;
 
-        public PageStreamStorage([NotNull]Stream fs)
+        public PageStorage([NotNull]Stream fs)
         {
             _fs = fs;
             if (!fs.CanRead) throw new Exception("Database stream must be readable");
@@ -86,7 +86,7 @@ namespace StreamDb.Internal.Core
             if (dataStream == null) throw new Exception("Data stream must be valid");
 
             var bytesRequired = dataStream.Length - dataStream.Position;
-            var pagesRequired = SimplePage.CountRequired(bytesRequired);
+            var pagesRequired = BasicPage.CountRequired(bytesRequired);
 
             var pages = new int[pagesRequired];
             AllocatePageBlock(pages);
@@ -135,13 +135,13 @@ namespace StreamDb.Internal.Core
         /// <summary>
         /// Read a page from the storage stream to memory. This will check the CRC.
         /// </summary>
-        [CanBeNull]public SimplePage GetRawPage(int pageId, bool ignoreCRC = false)
+        [CanBeNull]public BasicPage GetRawPage(int pageId, bool ignoreCRC = false)
         {
             if (pageId < 0) return null;
             lock (fslock)
             {
-                _fs.Seek(HEADER_SIZE + (pageId * SimplePage.PageRawSize), SeekOrigin.Begin);
-                var result = new SimplePage(pageId);
+                _fs.Seek(HEADER_SIZE + (pageId * BasicPage.PageRawSize), SeekOrigin.Begin);
+                var result = new BasicPage(pageId);
                 result.Defrost(_fs);
                 if (!ignoreCRC && !result.ValidateCrc()) throw new Exception($"Reading page {pageId} failed CRC check");
                 return result;
@@ -151,21 +151,21 @@ namespace StreamDb.Internal.Core
         /// <summary>
         /// Write a page from memory to storage. This will update the CRC before writing.
         /// </summary>
-        public void CommitPage(SimplePage page) {
+        public void CommitPage(BasicPage page) {
             if (page == null) throw new Exception("Can't commit a null page");
             if (page.PageId < 0) throw new Exception("Page ID must be valid");
 
             var pageId = page.PageId;
             page.UpdateCRC();
 
-            var ms = new MemoryStream(SimplePage.PageRawSize);
+            var ms = new MemoryStream(BasicPage.PageRawSize);
             page.Freeze().CopyTo(ms);
             ms.Seek(0, SeekOrigin.Begin);
             var buffer = ms.ToArray() ?? throw new Exception($"Failed to serialise page {pageId}");
 
             lock (fslock)
             {
-                _fs.Seek(HEADER_SIZE + (pageId * SimplePage.PageRawSize), SeekOrigin.Begin);
+                _fs.Seek(HEADER_SIZE + (pageId * BasicPage.PageRawSize), SeekOrigin.Begin);
                 _fs.Write(buffer, 0, buffer.Length);
                 _fs.Flush();
             }
@@ -446,7 +446,7 @@ namespace StreamDb.Internal.Core
             {
                 var page = GetRawPage(pages[i]);
                 if (page == null) throw new Exception($"Failed to load page {pages[i]}");
-                page.Write(dataStream, 0, SimplePage.PageDataCapacity);
+                page.Write(dataStream, 0, BasicPage.PageDataCapacity);
                 page.PrevPageId = prev;
 
                 CommitPage(page);
@@ -463,9 +463,9 @@ namespace StreamDb.Internal.Core
         {
             for (int i = startIdx; i < block.Length; i++)
             {
-                var pageId = (int) ((1 + _fs.Length - HEADER_SIZE) / SimplePage.PageRawSize);
+                var pageId = (int) ((1 + _fs.Length - HEADER_SIZE) / BasicPage.PageRawSize);
                 block[i] = pageId;
-                CommitPage(new SimplePage(block[i]));
+                CommitPage(new BasicPage(block[i]));
             }
         }
 
@@ -555,7 +555,7 @@ namespace StreamDb.Internal.Core
                     // check if there's space on this page
                     var length = currentPage.ReadDataInt32(0);
 
-                    if (length < SimplePage.MaxInt32Index) // Space remains. Write value and exit
+                    if (length < BasicPage.MaxInt32Index) // Space remains. Write value and exit
                     {
                         length++;
                         currentPage.WriteDataInt32(length, pageToReleaseId);

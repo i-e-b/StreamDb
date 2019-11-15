@@ -8,13 +8,13 @@ namespace StreamDb.Internal.Core
     /// <summary>
     /// A db implementation that uses `PageStreamStorage` as the back-end
     /// </summary>
-    internal class PageStreamBackend : IDatabaseBackend
+    internal class PageStorageBackend : IDatabaseBackend
     {
-        [NotNull]private readonly PageStreamStorage _core;
+        [NotNull]private readonly PageStorage _core;
 
-        public PageStreamBackend(Stream fs) {
+        public PageStorageBackend(Stream fs) {
             if (fs == null) throw new Exception("Storage stream must not be null");
-            _core = new PageStreamStorage(fs);
+            _core = new PageStorage(fs);
         }
 
         /// <inheritdoc />

@@ -1,6 +1,5 @@
 ﻿using System.IO;
 using JetBrains.Annotations;
-using StreamDb.Internal.Core;
 using StreamDb.Internal.Support;
 
 namespace StreamDb.Internal.DbStructure
@@ -29,7 +28,7 @@ namespace StreamDb.Internal.DbStructure
     public class FreeListPage: IStreamSerialisable
     {
         [NotNull]private readonly int[] _entries;
-        public const int Capacity = SimplePage.PageDataCapacity / sizeof(int);
+        public const int Capacity = BasicPage.PageDataCapacity / sizeof(int);
 
         public FreeListPage()
         {

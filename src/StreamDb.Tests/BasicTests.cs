@@ -2,7 +2,7 @@
 using System.IO;
 using System.Linq;
 using NUnit.Framework;
-using StreamDb.Internal.Support;
+using StreamDb.Tests.Helpers;
 
 // ReSharper disable PossibleNullReferenceException
 
