@@ -1,6 +1,7 @@
 # StreamDb
 
-A minimalist database that uses only Streams as storage, and can survive power loss and data corruption
+A minimalist database that uses only Streams as storage, and can survive power loss and data corruption.
+This is working, but don't use it for anything important without significant testing.
 
 ## The plan:
 
