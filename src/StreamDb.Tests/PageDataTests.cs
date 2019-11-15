@@ -1,5 +1,4 @@
-﻿using System;
-using NUnit.Framework;
+﻿using NUnit.Framework;
 using StreamDb.Internal.Core;
 using StreamDb.Internal.DbStructure;
 
@@ -46,28 +45,6 @@ namespace StreamDb.Tests
             subject.UpdateCRC();
             Assert.That(subject.ValidateCrc(), Is.True, "CRC check failed, but should have passed");
             subject.Write(new byte[] { 1, 2, 99, 4, 5, 6 }, 0, 0, 6);
-            Assert.That(subject.ValidateCrc(), Is.False, "CRC check passed, but should have failed");
-        }
-
-        [Test]
-        public void on_complex_page_crc_checks_work () {
-            var subject = new ComplexPage
-            {
-                DocumentId = Guid.NewGuid(),
-                DocumentSequence = 12,
-                NextPageId = -1,
-                FirstPageId = 25,
-                PrevPageId = 20,
-                PageType = PageType.Data
-            };
-
-            subject.UpdateCRC();
-
-            Assert.That(subject.CrcHash, Is.Not.Zero, "CRC did not update");
-
-            Assert.That(subject.ValidateCrc(), Is.True, "CRC check failed, but should have passed");
-
-            subject.DocumentId = Guid.NewGuid();
             Assert.That(subject.ValidateCrc(), Is.False, "CRC check passed, but should have failed");
         }
     }

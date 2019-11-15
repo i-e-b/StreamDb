@@ -3,7 +3,7 @@ using System.IO;
 using JetBrains.Annotations;
 using StreamDb.Internal.Support;
 
-namespace StreamDb.Internal.Core
+namespace StreamDb.Internal.DbStructure
 {
     /// <summary>
     /// Represents a general purpose page in the DB.

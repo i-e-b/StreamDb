@@ -47,12 +47,10 @@
     <Compile Include="BasicTests.cs" />
     <Compile Include="Helpers\CutoffStream.cs" />
     <Compile Include="FreeChainTests.cs" />
-    <Compile Include="IndexTreeTests.cs" />
     <Compile Include="IteratorExtensions.cs" />
     <Compile Include="MonotonicByteTests.cs" />
     <Compile Include="PageDataTests.cs" />
     <Compile Include="PageStreamStorageTests.cs" />
-    <Compile Include="PageTableTests.cs" />
     <Compile Include="PathIndexingTests.cs" />
     <Compile Include="PersistentReverseTrie.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

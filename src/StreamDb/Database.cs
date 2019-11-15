@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using JetBrains.Annotations;
 using StreamDb.Internal.Core;
+using StreamDb.Internal.DbStructure;
 
 namespace StreamDb
 {
@@ -180,7 +181,7 @@ namespace StreamDb
         /// <param name="freePages">The number of free pages that can be written without increasing storage</param>
         public void CalculateStatistics(out int totalPages, out int freePages)
         {
-            totalPages = (int) (_fs.Length / ComplexPage.PageRawSize);
+            totalPages = (int) (_fs.Length / SimplePage.PageRawSize);
             freePages = _pages.CountFreePages();
         }
 

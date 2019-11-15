@@ -25,6 +25,8 @@ namespace StreamDb.Internal.Core
         /// <summary> A magic number we use to recognise our database format </summary>
         [NotNull] public static readonly byte[] HEADER_MAGIC = { 0x55, 0xAA, 0xFE, 0xED, 0xFA, 0xCE, 0xDA, 0x7A };
 
+        private volatile ReverseTrie<SerialGuid> _pathLookupCache;
+
         public const int MAGIC_SIZE = 8;
         public const int HEADER_SIZE = (VersionedLink.ByteSize * 3) + MAGIC_SIZE;
         public const int FREE_PAGE_SLOTS = 128;
@@ -322,6 +324,7 @@ namespace StreamDb.Internal.Core
         {
             previousDocId = null;
             if (string.IsNullOrEmpty(path)) throw new Exception("Path must not be null or empty");
+            _pathLookupCache = null;
 
             lock (fslock)
             {
@@ -355,10 +358,7 @@ namespace StreamDb.Internal.Core
         /// </summary>
         public Guid? GetDocumentIdByPath(string exactPath)
         {
-            var pathLink = GetPathLookupLink();
-            var pathIndex = new ReverseTrie<SerialGuid>();
-            if (!pathLink.TryGetLink(0, out var pathPageId)) return null;
-            pathIndex.Defrost(GetStream(pathPageId));
+            var pathIndex = GetPathLookupIndex();
 
             var found = pathIndex.Get(exactPath);
             if (found == null) return null;
@@ -371,10 +371,7 @@ namespace StreamDb.Internal.Core
         /// </summary>
         [NotNull]public IEnumerable<string> GetPathsForDocument(Guid documentId)
         {
-            var pathLink = GetPathLookupLink();
-            var pathIndex = new ReverseTrie<SerialGuid>();
-            if (!pathLink.TryGetLink(0, out var pathPageId)) return new string[0];
-            pathIndex.Defrost(GetStream(pathPageId));
+            var pathIndex = GetPathLookupIndex();
 
             return pathIndex.GetPathsForEntry(documentId);
         }
@@ -386,10 +383,7 @@ namespace StreamDb.Internal.Core
         /// </summary>
         [NotNull]public IEnumerable<string> SearchPaths(string pathPrefix)
         {
-            var pathLink = GetPathLookupLink();
-            var pathIndex = new ReverseTrie<SerialGuid>();
-            if (!pathLink.TryGetLink(0, out var pathPageId)) return new string[0];
-            pathIndex.Defrost(GetStream(pathPageId));
+            var pathIndex = GetPathLookupIndex();
 
             return pathIndex.Search(pathPrefix);
         }
@@ -400,6 +394,7 @@ namespace StreamDb.Internal.Core
         /// </summary>
         public void UnbindPath(string exactPath)
         {
+            _pathLookupCache = null;
             lock (fslock)
             {
                 var pathLink = GetPathLookupLink();
@@ -426,6 +421,20 @@ namespace StreamDb.Internal.Core
 
 
 
+
+
+        [NotNull]private ReverseTrie<SerialGuid> GetPathLookupIndex()
+        {
+            var pathIndex = _pathLookupCache;
+            if (pathIndex != null) return pathIndex;
+
+            var pathLink = GetPathLookupLink();
+            pathIndex = new ReverseTrie<SerialGuid>();
+            if (pathLink.TryGetLink(0, out var pathPageId)) pathIndex.Defrost(GetStream(pathPageId));
+            _pathLookupCache = pathIndex;
+
+            return pathIndex;
+        }
 
         /// <summary>
         /// Write a stream to a known set of page IDs

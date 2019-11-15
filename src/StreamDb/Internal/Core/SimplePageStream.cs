@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using JetBrains.Annotations;
+using StreamDb.Internal.DbStructure;
 
 namespace StreamDb.Internal.Core
 {

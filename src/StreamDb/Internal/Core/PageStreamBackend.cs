@@ -2,9 +2,8 @@
 using System.Collections.Generic;
 using System.IO;
 using JetBrains.Annotations;
-using StreamDb.Internal.Core;
 
-namespace StreamDb
+namespace StreamDb.Internal.Core
 {
     /// <summary>
     /// A db implementation that uses `PageStreamStorage` as the back-end

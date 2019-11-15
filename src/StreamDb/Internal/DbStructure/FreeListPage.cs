@@ -12,7 +12,7 @@ namespace StreamDb.Internal.DbStructure
     /// The free chain is a set of pages, each of which is just a big array of Int32 entries
     /// page zero is always occupied, and negative pages are invalid, so either of these is an empty slot in the free list
     ///
-    /// Each free page can hold 1015 page IDs (3.9MB of document data space) -- so having multiples *should* be rare
+    /// Each free page can hold 1020 page IDs (3.9MB of document data space) -- so having multiples *should* be rare
     /// When searching for a free page, we scan the free chain first. If we can't find anything we
     /// allocate more space (writing off the end of the stream).
     ///
@@ -29,7 +29,7 @@ namespace StreamDb.Internal.DbStructure
     public class FreeListPage: IStreamSerialisable
     {
         [NotNull]private readonly int[] _entries;
-        public const int Capacity = ComplexPage.PageDataCapacity / sizeof(int);
+        public const int Capacity = SimplePage.PageDataCapacity / sizeof(int);
 
         public FreeListPage()
         {
