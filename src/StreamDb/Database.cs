@@ -99,6 +99,14 @@ namespace StreamDb
         }
 
         /// <summary>
+        /// Try to look up the document ID bound to a path.
+        /// </summary>
+        public bool GetIdByPath(string path, out Guid id) {
+            id = _pages.GetDocumentIdByPath(path);
+            return id != Guid.Empty;
+        }
+
+        /// <summary>
         /// Add a new path binding to a document ID.
         /// If the path is already bound to a document, the old document ID will be returned
         /// </summary>
