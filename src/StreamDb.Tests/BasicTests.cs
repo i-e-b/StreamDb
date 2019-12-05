@@ -2,6 +2,7 @@
 using System.IO;
 using System.Linq;
 using NUnit.Framework;
+using StreamDb.Internal.DbStructure;
 using StreamDb.Tests.Helpers;
 
 // ReSharper disable PossibleNullReferenceException
@@ -133,7 +134,7 @@ namespace StreamDb.Tests
         [Test]
         public void trying_to_read_a_damaged_stream_gives_a_failure_result (){
             // at which point, you'd have a 'recover' method to call
-
+            BasicPage.QuickAndDirtyMode = false;
 
             // Build a db in ram, then write over 1 byte per page
             using (var ms = new MemoryStream())
@@ -149,7 +150,7 @@ namespace StreamDb.Tests
                 }
 
                 // now damage the stream
-                for (int i = 0; i < ms.Length; i+= 2000)
+                for (int i = 0; i < ms.Length; i+= 1000)
                 {
                     ms.Seek(i, SeekOrigin.Begin);
                     ms.WriteByte(0);
@@ -297,6 +298,7 @@ namespace StreamDb.Tests
         
         [Test, Explicit("Slow test")]
         public void stress_test_overwrite (){
+            BasicPage.QuickAndDirtyMode = true;
             using (var doc = MakeTestDocument())
             using (var ms = new MemoryStream())
             {
@@ -346,6 +348,7 @@ namespace StreamDb.Tests
         
         [Test, Explicit("Slow test")]
         public void stress_test_read (){
+            BasicPage.QuickAndDirtyMode = true;
             using (var doc = MakeTestDocument())
             using (var ms = new MemoryStream())
             {

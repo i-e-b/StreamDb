@@ -138,14 +138,14 @@ namespace StreamDb.Internal.Core
         [CanBeNull]public BasicPage GetRawPage(int pageId, bool ignoreCRC = false)
         {
             if (pageId < 0) return null;
+            var result = new BasicPage(pageId);
             lock (fslock)
             {
                 _fs.Seek(HEADER_SIZE + (pageId * BasicPage.PageRawSize), SeekOrigin.Begin);
-                var result = new BasicPage(pageId);
                 result.Defrost(_fs);
-                if (!ignoreCRC && !result.ValidateCrc()) throw new Exception($"Reading page {pageId} failed CRC check");
-                return result;
             }
+            if (!ignoreCRC && !result.ValidateCrc()) throw new Exception($"Reading page {pageId} failed CRC check");
+            return result;
         }
 
         /// <summary>

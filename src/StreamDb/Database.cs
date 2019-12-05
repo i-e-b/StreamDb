@@ -187,5 +187,13 @@ namespace StreamDb
         {
             _fs.Flush();
         }
+
+        /// <summary>
+        /// If you call this method, CRC checks will be ignored on READ (still calculated for WRITE).
+        /// This makes read-heavy workloads about 10x faster, but data corruption will go unreported. 
+        /// </summary>
+        public static void SetQuickAndDirtyMode() {
+            BasicPage.QuickAndDirtyMode = true;
+        }
     }
 }

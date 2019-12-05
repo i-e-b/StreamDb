@@ -12,31 +12,38 @@ namespace StreamDb.Internal.Core
     public class SimplePageStream : Stream
     {
         [NotNull]private readonly PageStorage _parent;
-        /// <summary>Mapping of (position in page chain) to (global page id)</summary>
-        [NotNull]private readonly List<int> _pageIdCache;
+        private readonly int _endPageId;
+
+        /// <summary>Pages loaded from the DB</summary>
+        [NotNull]private readonly List<BasicPage> _pageIdCache;
+
+        private long _length;
+        private bool _cached;
 
         public SimplePageStream([NotNull]PageStorage parent, int endPageId)
         {
+            _cached = false;
             _parent = parent;
-            _pageIdCache = new List<int>();
-
-            Length = LoadPageIdCache(parent, endPageId);
+            _endPageId = endPageId;
+            _pageIdCache = new List<BasicPage>();
         }
 
-        private long LoadPageIdCache([NotNull]PageStorage parent, int endPageId)
+        private void LoadPageIdCache()
         {
+            if (_cached) return;
             long length = 0;
-            var s = new Stack<int>();
-            var p = parent.GetRawPage(endPageId);
+            var s = new Stack<BasicPage>();
+            var p = _parent.GetRawPage(_endPageId);
             while (p != null)
             {
-                s.Push(p.PageId);
+                s.Push(p);
                 length += p.DataLength;
-                p = parent.GetRawPage(p.PrevPageId); // we end up checking all the CRCs here
+                p = _parent.GetRawPage(p.PrevPageId); // we end up checking all the CRCs here
             }
 
-            while (s.Count > 0) _pageIdCache.Add(s.Pop());
-            return length;
+            while (s.Count > 0) _pageIdCache.Add(s.Pop()); // cache in forward-order
+            _length = length;
+            _cached = true;
         }
 
         /// <inheritdoc />
@@ -46,6 +53,7 @@ namespace StreamDb.Internal.Core
         public override int Read(byte[] buffer, int offset, int count)
         {
             if (buffer == null) throw new Exception("Destination buffer must not be null");
+            LoadPageIdCache(); // make sure data is loaded
 
             var pageIdx = (int) (Position / BasicPage.PageDataCapacity);
             var startingOffset = (int) (Position % BasicPage.PageDataCapacity);
@@ -56,7 +64,7 @@ namespace StreamDb.Internal.Core
             var written = 0;
 
             while (remains > 0) {
-                var page = _parent.GetRawPage(_pageIdCache[pageIdx], ignoreCRC: true); // ignore CRCs here, as we checked them at stream creation time
+                var page = _pageIdCache[pageIdx]; // ignore CRCs here, as we checked them at stream creation time
                 if (page == null) throw new Exception($"Page {_pageIdCache[pageIdx]} lost between cache and read");
                 var available = (int) (page.DataLength - startingOffset);
                 if (available < 1) throw new Exception($"Read from page chain returned nonsense bytes available ({available})");
@@ -117,7 +125,7 @@ namespace StreamDb.Internal.Core
         public override bool CanWrite => false;
 
         /// <inheritdoc />
-        public override long Length { get; }
+        public override long Length { get { LoadPageIdCache(); return _length; } }
 
         /// <inheritdoc />
         public override long Position { get; set; }

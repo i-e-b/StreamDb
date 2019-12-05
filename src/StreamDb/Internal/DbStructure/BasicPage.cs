@@ -12,6 +12,14 @@ namespace StreamDb.Internal.DbStructure
     /// The simplified page contains only reverse links. Technically it's less recoverable than the complex page form in the case of partial destruction.
     /// </remarks>
     public class BasicPage : IStreamSerialisable {
+
+        /// <summary>
+        /// If you set this to `true`, all CRC checks will be skipped.
+        /// This is a whole lot faster, but data corruption will pass unnoticed.
+        /// <para></para>
+        /// Note: the CRC headers will still be calculated on write.
+        /// </summary>
+        public static bool QuickAndDirtyMode = false;
         
         /// <summary>
         /// Size of a page in storage, including all headers and data
@@ -125,6 +133,8 @@ namespace StreamDb.Internal.DbStructure
 
         public bool ValidateCrc()
         {
+            if (QuickAndDirtyMode) return true;
+
             var original = CrcHash;
             CrcHash = 0;
             var actual = Crc32.Compute(_data);
