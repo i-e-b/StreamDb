@@ -159,7 +159,7 @@ namespace StreamDb.Tests
                 // finally, try to read the document back
                 var ex = Assert.Throws<Exception>(()=>{subject.Get("this document will be damaged", out _);}, "Database did not notice damage");
                 Console.WriteLine(ex);
-                Assert.That(ex.Message, Contains.Substring("Data integrity check failed"), $"Message was \"{ex.Message}\"");
+                Assert.That(ex.ToString(), Contains.Substring("failed CRC check"), $"Message was \"{ex.Message}\"");
             }
         }
         

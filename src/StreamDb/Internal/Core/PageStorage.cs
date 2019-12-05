@@ -595,22 +595,23 @@ namespace StreamDb.Internal.Core
         private void SetLink(int headOffset, VersionedLink value)
         {
             if (value == null) throw new Exception("Attempted to set invalid header link");
+            var strm = value.Freeze();
             lock (fslock)
             {
                 _fs.Seek(MAGIC_SIZE + (VersionedLink.ByteSize * headOffset), SeekOrigin.Begin);
-                value.Freeze().CopyTo(_fs);
+                strm.CopyTo(_fs);
             }
         }
 
         [NotNull]private VersionedLink GetLink(int headOffset)
         {
+            var result = new VersionedLink();
             lock (fslock)
             {
-                var result = new VersionedLink();
                 _fs.Seek(MAGIC_SIZE + (VersionedLink.ByteSize * headOffset), SeekOrigin.Begin);
                 result.Defrost(_fs);
-                return result;
             }
+            return result;
         }
 
     }

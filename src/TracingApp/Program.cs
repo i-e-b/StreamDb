@@ -13,7 +13,7 @@ namespace TracingApp
 
         // For call/performance tracing:
         const int OVERWRITE_COUNT = 10;
-        const int DOCUMENT_COUNT = 100;
+        const int DOCUMENT_COUNT = 200;
 
 
         static void Main()
@@ -25,7 +25,7 @@ namespace TracingApp
             using (var doc = MakeTestDocument())
             using (var ms = new MemoryStream())
             {
-                Database.SetQuickAndDirtyMode(); // otherwise CRC checks dominate measurements
+                //Database.SetQuickAndDirtyMode(); // otherwise CRC checks dominate measurements
                 var subject = Database.TryConnect(ms);
 
                 Console.WriteLine($"Empty database is {ms.Length / 1024}kb");
@@ -33,7 +33,7 @@ namespace TracingApp
                 // write lots of documents, and overwrite them a lot of times
                 for (int overwrites = 0; overwrites < OVERWRITE_COUNT; overwrites++)
                 {
-                    Console.Write("Writing a 100 document block");
+                    Console.Write($"Writing a {DOCUMENT_COUNT} document block");
 
                     for (int i = 0; i < DOCUMENT_COUNT; i++)
                     {

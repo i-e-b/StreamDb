@@ -30,8 +30,8 @@ namespace StreamDb.Tests
             try {
                 subject.WriteDocument("failure", MakeTestDocument());
             }
-            catch {
-                // ignore
+            catch (Exception ex){
+                Console.WriteLine("Exception was triggered, as expected: "+ex.Message);
             }
 
             Assert.That(stream.HasCutoff(), Is.True, "Failed to break output stream");
