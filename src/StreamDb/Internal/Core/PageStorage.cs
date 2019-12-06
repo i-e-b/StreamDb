@@ -428,10 +428,13 @@ namespace StreamDb.Internal.Core
             var pathIndex = _pathLookupCache;
             if (pathIndex != null) return pathIndex;
 
-            var pathLink = GetPathLookupLink();
-            pathIndex = new ReverseTrie<SerialGuid>();
-            if (pathLink.TryGetLink(0, out var pathPageId)) pathIndex.Defrost(GetStream(pathPageId));
-            _pathLookupCache = pathIndex;
+            lock (fslock)
+            {
+                var pathLink = GetPathLookupLink();
+                pathIndex = new ReverseTrie<SerialGuid>();
+                if (pathLink.TryGetLink(0, out var pathPageId)) pathIndex.Defrost(GetStream(pathPageId));
+                _pathLookupCache = pathIndex;
+            }
 
             return pathIndex;
         }

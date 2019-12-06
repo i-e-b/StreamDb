@@ -58,7 +58,8 @@ namespace StreamDb.Internal.Core
             var pageIdx = (int) (Position / BasicPage.PageDataCapacity);
             var startingOffset = (int) (Position % BasicPage.PageDataCapacity);
 
-            if (pageIdx < 0 || pageIdx >= _pageIdCache.Count) throw new Exception("Read started out of the bounds of page chain");
+            if (pageIdx < 0) throw new Exception("Read started out of the bounds of page chain");
+            if (pageIdx >= _pageIdCache.Count) return 0; // ran off the end
 
             var remains = (int)Math.Min(count, Length - Position);
             var written = 0;
