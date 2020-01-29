@@ -3,6 +3,8 @@
 A minimalist database that uses only Streams as storage, and can survive power loss and data corruption.
 This is working, but don't use it for anything important without significant testing.
 
+There is also a small WinForms app to explore StreamDB files created by other software.
+
 ## The plan:
 
 * A generalised page storage system, using fixed size pages
