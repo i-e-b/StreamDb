@@ -20,16 +20,18 @@ namespace StreamDb.Internal.Core
     /// </summary>
     public class PageStorage {
         [NotNull] private readonly Stream _fs;
-        [NotNull] private readonly object fslock = new object();
+        [NotNull] private readonly object _fslock = new object();
 
+        // ReSharper disable InconsistentNaming
         /// <summary> A magic number we use to recognise our database format </summary>
         [NotNull] public static readonly byte[] HEADER_MAGIC = { 0x55, 0xAA, 0xFE, 0xED, 0xFA, 0xCE, 0xDA, 0x7A };
-
-        private volatile ReverseTrie<SerialGuid>? _pathLookupCache;
 
         public const int MAGIC_SIZE = 8;
         public const int HEADER_SIZE = (VersionedLink.ByteSize * 3) + MAGIC_SIZE;
         public const int FREE_PAGE_SLOTS = 128;
+        // ReSharper restore InconsistentNaming
+        
+        private volatile ReverseTrie<SerialGuid>? _pathLookupCache;
 
         public PageStorage([NotNull]Stream fs)
         {
@@ -39,7 +41,7 @@ namespace StreamDb.Internal.Core
 
             // Create empty database?
             if (fs.Length == 0) {
-                InitialiseDB(fs);
+                InitialiseDb(fs);
                 return;
             }
 
@@ -53,7 +55,7 @@ namespace StreamDb.Internal.Core
             }
         }
 
-        public static void InitialiseDB([NotNull]Stream fs)
+        public static void InitialiseDb([NotNull]Stream fs)
         {
             if (!fs.CanWrite) throw new Exception("Tried to initialise a read-only stream");
 
@@ -104,7 +106,7 @@ namespace StreamDb.Internal.Core
             if (block == null) throw new Exception("Requested free pages for a null block");
             if (block.Length < 1) return;
 
-            lock (fslock) {
+            lock (_fslock) {
                 // Exhaust the free page list to fill our block.
                 // If we run out of free pages, allocate the rest at the end of the stream
                 var stopIdx = ReassignReleasedPages(block);
@@ -139,7 +141,7 @@ namespace StreamDb.Internal.Core
         {
             if (pageId < 0) return null;
             var result = new BasicPage(pageId);
-            lock (fslock)
+            lock (_fslock)
             {
                 _fs.Seek(HEADER_SIZE + (pageId * BasicPage.PageRawSize), SeekOrigin.Begin);
                 result.Defrost(_fs);
@@ -163,7 +165,7 @@ namespace StreamDb.Internal.Core
             ms.Seek(0, SeekOrigin.Begin);
             var buffer = ms.ToArray() ?? throw new Exception($"Failed to serialise page {pageId}");
 
-            lock (fslock)
+            lock (_fslock)
             {
                 _fs.Seek(HEADER_SIZE + (pageId * BasicPage.PageRawSize), SeekOrigin.Begin);
                 _fs.Write(buffer, 0, buffer.Length);
@@ -181,7 +183,7 @@ namespace StreamDb.Internal.Core
         /// <param name="expiredPageId">an expired version of the document, or `-1` if no versions have expired</param>
         public void BindIndex(Guid documentId, int newPageId, out int expiredPageId)
         {
-            lock (fslock)
+            lock (_fslock)
             {
                 var indexLink = GetIndexPageLink();
                 if (!indexLink.TryGetLink(0, out var indexTopPageId))
@@ -254,7 +256,7 @@ namespace StreamDb.Internal.Core
         /// </summary>
         public void UnbindIndex(Guid documentId)
         {
-            lock (fslock)
+            lock (_fslock)
             {
                 var indexLink = GetIndexPageLink();
                 if (!indexLink.TryGetLink(0, out var indexTopPageId)) {
@@ -326,7 +328,7 @@ namespace StreamDb.Internal.Core
             if (string.IsNullOrEmpty(path)) throw new Exception("Path must not be null or empty");
             _pathLookupCache = null;
 
-            lock (fslock)
+            lock (_fslock)
             {
                 // Read current path document (if it exists)
                 var pathLink = GetPathLookupLink();
@@ -395,7 +397,7 @@ namespace StreamDb.Internal.Core
         public void UnbindPath(string exactPath)
         {
             _pathLookupCache = null;
-            lock (fslock)
+            lock (_fslock)
             {
                 var pathLink = GetPathLookupLink();
                 var pathIndex = new ReverseTrie<SerialGuid>();
@@ -428,7 +430,7 @@ namespace StreamDb.Internal.Core
             var pathIndex = _pathLookupCache;
             if (pathIndex != null) return pathIndex;
 
-            lock (fslock)
+            lock (_fslock)
             {
                 var pathLink = GetPathLookupLink();
                 pathIndex = new ReverseTrie<SerialGuid>();
@@ -534,7 +536,7 @@ namespace StreamDb.Internal.Core
         {
             // Note: if we need to extend the free list, we should use the last page in the current list.
             // So, we can't assume pages are full based on prevPageId value.
-            lock (fslock)
+            lock (_fslock)
             {
                 var freeLink = GetFreeListLink();
                 var hasList = freeLink.TryGetLink(0, out var topPageId);
@@ -599,7 +601,7 @@ namespace StreamDb.Internal.Core
         {
             if (value == null) throw new Exception("Attempted to set invalid header link");
             var strm = value.Freeze();
-            lock (fslock)
+            lock (_fslock)
             {
                 _fs.Seek(MAGIC_SIZE + (VersionedLink.ByteSize * headOffset), SeekOrigin.Begin);
                 strm.CopyTo(_fs);
@@ -609,7 +611,7 @@ namespace StreamDb.Internal.Core
         [NotNull]private VersionedLink GetLink(int headOffset)
         {
             var result = new VersionedLink();
-            lock (fslock)
+            lock (_fslock)
             {
                 _fs.Seek(MAGIC_SIZE + (VersionedLink.ByteSize * headOffset), SeekOrigin.Begin);
                 result.Defrost(_fs);

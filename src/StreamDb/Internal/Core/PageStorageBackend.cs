@@ -92,6 +92,22 @@ namespace StreamDb.Internal.Core
                 throw new Exception("Data integrity check failed", ex);
             }
         }
+        
+        /// <inheritdoc />
+        public string GetInfo(Guid id) {
+            try
+            {
+                var pageHead = _core.GetDocumentHead(id);
+                if (pageHead < 0) return "Document not found";
+                var page = _core.GetRawPage(pageHead);
+                if (page == null) return "Failed to read document header";
+                return $"{page.DataLength} bytes; file index = {page.PageId}; CRC = {page.CrcHash:X};";
+            }
+            catch (Exception ex)
+            {
+                return "Data integrity check failed: " + ex.Message;
+            }
+        }
 
         /// <inheritdoc />
         public int CountFreePages() { return 0; }

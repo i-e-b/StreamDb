@@ -10,7 +10,7 @@ namespace StreamDb.Internal.Support
 {
     public class ReverseTrie<TValue> : IStreamSerialisable where TValue : class, IStreamSerialisable, new()
     {
-        public class RTNode:PartiallyOrdered {
+        public class RtNode : PartiallyOrdered {
             public readonly char Value;
             public readonly int Parent;
 
@@ -22,24 +22,24 @@ namespace StreamDb.Internal.Support
             /// </summary>
             public TValue? Data;
 
-            public RTNode(char value, int parent) {
+            public RtNode(char value, int parent) {
                 Value = value;
                 Parent = parent;
             }
 
-            public static int AddNewNode(char value, int parent, List<RTNode> target) {
+            public static int AddNewNode(char value, int parent, List<RtNode> target) {
                 if (target == null) throw new Exception("Can't add a node to a null target");
                 lock (target)
                 {
                     var idx = target.Count;
-                    target.Add(new RTNode(value, parent) { SelfIndex = idx });
+                    target.Add(new RtNode(value, parent) { SelfIndex = idx });
                     return idx;
                 }
             }
 
             /// <inheritdoc />
             public override int CompareTo(object? obj) {
-                if (obj == null || !(obj is RTNode node)) { return -1; }
+                if (obj == null || !(obj is RtNode node)) { return -1; }
                 if (node.Parent != Parent) return Parent.CompareTo(node.Parent);
                 return Value.CompareTo(node.Value);
             }
@@ -55,7 +55,7 @@ namespace StreamDb.Internal.Support
         /// This is the core list used for storage, and produces indexes.
         /// This is the only data that is serialised.
         /// </summary>
-        [NotNull, ItemNotNull]private readonly List<RTNode> _store;
+        [NotNull, ItemNotNull]private readonly List<RtNode> _store;
 
         /// <summary>
         /// (Parent Index -> Char Value -> Child Index);
@@ -70,11 +70,11 @@ namespace StreamDb.Internal.Support
 
         public ReverseTrie()
         {
-            _store = new List<RTNode>();
+            _store = new List<RtNode>();
             _fwdCache = new Map<int, Map<char, int>>(() => new Map<char, int>());
             _valueCache = new Dictionary<TValue, HashSet<int>>();
 
-            RTNode.AddNewNode(RootValue, RootParent, _store);
+            RtNode.AddNewNode(RootValue, RootParent, _store);
         }
 
         /// <summary>
@@ -129,7 +129,7 @@ namespace StreamDb.Internal.Support
         /// </summary>
         [NotNull]public IEnumerable<string> Search(string prefix)
         {
-            if (string.IsNullOrEmpty(prefix)) throw new Exception("Prefix must not be null or empty");
+            if (prefix == null) throw new Exception("Prefix must not be null");
             if (!TryFindNodeIndex(prefix, out var currentNode)) yield break;
 
             var allKeys = _fwdCache[currentNode]?.Keys().ToArray();
@@ -148,11 +148,11 @@ namespace StreamDb.Internal.Support
         /// <summary>
         /// List all paths currently bound to the given value
         /// </summary>
-        [NotNull]public IEnumerable<string> GetPathsForEntry(TValue value) {
+        [NotNull]public IEnumerable<string> GetPathsForEntry(TValue? value) {
             if (value == null) yield break;
             if (!_valueCache.ContainsKey(value) || _valueCache[value] == null) yield break;
 
-            foreach (var index in _valueCache[value])
+            foreach (var index in _valueCache[value]!)
             {
                 yield return TraceNodePath(index);
             }
@@ -166,11 +166,11 @@ namespace StreamDb.Internal.Support
             if (string.IsNullOrEmpty(exactPath)) throw new Exception("Path must not be null or empty");
             if (!TryFindNodeIndex(exactPath, out var currentNode)) return;
             if (_store[currentNode] == null) throw new Exception("Internal logic error in ReverseTrie.Delete()");
-            var old = _store[currentNode].Data;
-            _store[currentNode].Data = default;
+            var old = _store[currentNode]!.Data;
+            _store[currentNode]!.Data = default;
 
             if (old != null && _valueCache.ContainsKey(old) && _valueCache[old] != null) {
-                _valueCache[old].Remove(currentNode);
+                _valueCache[old]!.Remove(currentNode);
             }
         }
 
@@ -218,7 +218,7 @@ namespace StreamDb.Internal.Support
             // reset to starting condition
             _store.Clear();
             _fwdCache.Clear();
-            RTNode.AddNewNode(RootValue, RootParent, _store);
+            RtNode.AddNewNode(RootValue, RootParent, _store);
 
             if (!TryDecodeValue(src, out var expectedLength)) {
                 throw new Exception("Input stream is invalid");
@@ -237,7 +237,7 @@ namespace StreamDb.Internal.Support
 
                 if (parent > _store.Count) throw new Exception($"Invalid structure: found a parent forward of child (#{parent} of {_store.Count})");
 
-                var newIdx = RTNode.AddNewNode((char)value, (int)parent, _store);
+                var newIdx = RtNode.AddNewNode((char)value, (int)parent, _store);
                 if (newIdx <= parent) throw new Exception("Invalid structure: found a forward pointer");
 
 
@@ -249,10 +249,10 @@ namespace StreamDb.Internal.Support
                     var data = new TValue();
                     try
                     {
-                        var substream = new Substream(source, (int)dataLength);
-                        if (substream.AvailableData() < dataLength) throw new Exception($"Stream was not long enough for declared data (expected {dataLength}, got {substream.AvailableData()})");
-                        data.Defrost(substream);
-                        _store[newIdx].Data = data;
+                        var subStream = new Substream(source, (int)dataLength);
+                        if (subStream.AvailableData() < dataLength) throw new Exception($"Stream was not long enough for declared data (expected {dataLength}, got {subStream.AvailableData()})");
+                        data.Defrost(subStream);
+                        _store[newIdx]!.Data = data;
                         AddToValueCache(newIdx, data);
                     }
                     catch (Exception ex)
@@ -297,7 +297,7 @@ namespace StreamDb.Internal.Support
         [NotNull, ItemNotNull]private IEnumerable<string> RecursiveSearch(int nodeIdx)
         {
             var node = _store[nodeIdx];
-            if (node.Data != null) {
+            if (node?.Data != null) {
                 yield return TraceNodePath(nodeIdx);
             }
 
@@ -319,8 +319,8 @@ namespace StreamDb.Internal.Support
             var stack = new Stack<char>();
             while (nodeIdx > 0) {
                 if (_store[nodeIdx] == null) throw new Exception("Internal storage error in ReverseTrie.TraceNodePath()");
-                stack.Push(_store[nodeIdx].Value);
-                nodeIdx = _store[nodeIdx].Parent;
+                stack.Push(_store[nodeIdx]!.Value);
+                nodeIdx = _store[nodeIdx]!.Parent;
             }
             var sb = new StringBuilder(stack.Count);
             while (stack.Count > 0) sb.Append(stack.Pop());
@@ -347,7 +347,7 @@ namespace StreamDb.Internal.Support
 
         private int LinkNewNode(int currentNode, char c)
         {
-            var idx = RTNode.AddNewNode(c, currentNode, _store);
+            var idx = RtNode.AddNewNode(c, currentNode, _store);
 
             var map = _fwdCache[currentNode];
             if (map == null) throw new Exception("Internal storage error in ReverseTrie.LinkNewNode()");

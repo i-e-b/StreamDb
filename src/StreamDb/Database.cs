@@ -106,6 +106,16 @@ namespace StreamDb
             id = _pages.GetDocumentIdByPath(path);
             return id != Guid.Empty;
         }
+        
+
+        /// <summary>
+        /// Get a summary of the document at a given path
+        /// </summary>
+        public string GetDocumentInfo(string path)
+        {
+            var id = _pages.GetDocumentIdByPath(path);
+            return _pages.GetInfo(id);
+        }
 
         /// <summary>
         /// Add a new path binding to a document ID.

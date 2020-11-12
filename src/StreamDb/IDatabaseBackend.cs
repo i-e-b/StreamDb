@@ -80,5 +80,10 @@ namespace StreamDb
         /// Scan the free page chain, count how many slots are occupied
         /// </summary>
         int CountFreePages();
+        
+        /// <summary>
+        /// Get a summary string for a document, by ID
+        /// </summary>
+        string GetInfo(Guid id);
     }
 }
