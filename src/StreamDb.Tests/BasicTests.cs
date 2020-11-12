@@ -55,7 +55,7 @@ namespace StreamDb.Tests
         [Test, Repeat(2)]
         public void can_create_a_database_with_a_file_stream ()
         {
-            using (var fs = File.Open(@"C:\Temp\StreamDBTest.dat", FileMode.Truncate, FileAccess.ReadWrite, FileShare.None))
+            using (var fs = File.Open(@"C:\Temp\StreamDBTest.dat", FileMode.Create, FileAccess.ReadWrite, FileShare.None))
             using (var db = Database.TryConnect(fs))
             {
 

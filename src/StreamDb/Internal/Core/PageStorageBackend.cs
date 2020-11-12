@@ -80,10 +80,11 @@ namespace StreamDb.Internal.Core
         }
 
         /// <inheritdoc />
-        public Stream ReadDocument(Guid id) {
+        public Stream? ReadDocument(Guid id) {
             try
             {
                 var pageHead = _core.GetDocumentHead(id);
+                if (pageHead < 0) return null;
                 return _core.GetStream(pageHead);
             }
             catch (Exception ex)

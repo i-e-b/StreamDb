@@ -73,7 +73,7 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         /// <param name="docId">Document ID to find</param>
         /// <param name="link">If found, this is the page link options. May be null</param>
-        public bool Search(Guid docId, out VersionedLink link) {
+        public bool Search(Guid docId, out VersionedLink? link) {
             link = null;
 
             var index = Find(docId);

@@ -8,9 +8,9 @@ namespace StreamDb.Internal.Search
     public class Map<TIdx, TVal> where TIdx : struct
     {
         [NotNull] private readonly Dictionary<TIdx, TVal> _data;
-        private readonly Func<TVal> _generator;
+        private readonly Func<TVal>? _generator;
 
-        [CanBeNull]public TVal this[TIdx index]
+        public TVal this[TIdx index]
         {
             get
             {
@@ -19,7 +19,7 @@ namespace StreamDb.Internal.Search
                     _data.Add(index, _generator());
                     return _data[index];
                 }
-                return default;
+                return default!;
             }
             set
             {

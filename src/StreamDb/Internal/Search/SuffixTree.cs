@@ -61,8 +61,9 @@ namespace StreamDb.Internal.Search
         /// <summary>
         /// Returns true if the pattern exists at least once in the source.
         /// </summary>
-        public bool Contains(byte[] pattern)
+        public bool Contains(byte[]? pattern)
         {
+            if (pattern == null) return false;
             var index = FindNodeIndex(pattern, out _);
             return index >= 0;
         }
@@ -87,12 +88,12 @@ namespace StreamDb.Internal.Search
         /// Returns empty if the pattern is not found.
         /// If an empty pattern is given, an empty set is returned (technically, it should give every position in the string). 
         /// </summary>
-        [NotNull] public IEnumerable<int> FindAll(byte[] pattern)
+        [NotNull] public IEnumerable<int> FindAll(byte[]? pattern)
         {
             if (pattern == null || pattern.Length < 1) yield break;
 
             // Find the pattern our tree (as close to the root as possible)
-            // All suffix positions below this point are occurances of the pattern
+            // All suffix positions below this point are occurrences of the pattern
             var start = FindNodeIndex(pattern, out var remains);
             if (start <= 0) yield break; // not found, or empty pattern.
 

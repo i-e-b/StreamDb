@@ -21,7 +21,7 @@ namespace StreamDb.Internal.Support
         }
 
         /// <inheritdoc />
-        public override int CompareTo(object obj)
+        public override int CompareTo(object? obj)
         {
             if (!(obj is SerialGuid other)) return -1;
             return Value.CompareTo(other.Value);

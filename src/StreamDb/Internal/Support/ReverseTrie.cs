@@ -20,7 +20,7 @@ namespace StreamDb.Internal.Support
             /// <summary>
             /// Optional data stored with this node
             /// </summary>
-            public TValue Data;
+            public TValue? Data;
 
             public RTNode(char value, int parent) {
                 Value = value;
@@ -38,7 +38,7 @@ namespace StreamDb.Internal.Support
             }
 
             /// <inheritdoc />
-            public override int CompareTo(object obj) {
+            public override int CompareTo(object? obj) {
                 if (obj == null || !(obj is RTNode node)) { return -1; }
                 if (node.Parent != Parent) return Parent.CompareTo(node.Parent);
                 return Value.CompareTo(node.Value);
@@ -83,7 +83,7 @@ namespace StreamDb.Internal.Support
         /// </summary>
         /// <param name="path">Complete path to use as a key to the value</param>
         /// <param name="value">Value to be stored on this path</param>
-        public TValue Add(string path, TValue value)
+        public TValue? Add(string path, TValue? value)
         {
             if (value == null) throw new Exception("Value must not be null");
             if (string.IsNullOrEmpty(path)) throw new Exception("Path must not be null or empty");
@@ -106,8 +106,8 @@ namespace StreamDb.Internal.Support
             }
 
             if (_store[currentNode] == null) throw new Exception("Internal logic error in ReverseTrie.Add()");
-            var old = _store[currentNode].Data;
-            _store[currentNode].Data = value;
+            var old = _store[currentNode]!.Data;
+            _store[currentNode]!.Data = value;
             AddToValueCache(currentNode, value);
             return old;
         }
@@ -116,12 +116,12 @@ namespace StreamDb.Internal.Support
         /// Read the value stored on the given path.
         /// If no data is stored, the default value is returned
         /// </summary>
-        public TValue Get(string path)
+        public TValue? Get(string path)
         {
             if (string.IsNullOrEmpty(path)) throw new Exception("Path must not be null or empty");
             if (!TryFindNodeIndex(path, out var currentNode)) return default;
             if (_store[currentNode] == null) throw new Exception("Internal logic error in ReverseTrie.Get()");
-            return _store[currentNode].Data;
+            return _store[currentNode]!.Data;
         }
 
         /// <summary>

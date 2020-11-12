@@ -68,8 +68,9 @@ namespace StreamDb
         /// </summary>
         /// <param name="path">Path that can be used with `Get` and `Search` operations to recover this document</param>
         /// <param name="data">Stream containing document data. It will be read from current position to end.</param>
-        public Guid WriteDocument(string path, Stream data)
+        public Guid WriteDocument(string path, Stream? data)
         {
+            if (data == null) throw new ArgumentNullException(nameof(data));
             var id = _pages.WriteDocument(data);
             if (id == Guid.Empty) throw new Exception("Failed to write document data");
 
@@ -87,7 +88,7 @@ namespace StreamDb
         /// Read a document at the given path.
         /// Returns true if found, false if not found.
         /// </summary>
-        public bool Get(string path, out Stream stream)
+        public bool Get(string path, out Stream? stream)
         {
             stream = null;
 

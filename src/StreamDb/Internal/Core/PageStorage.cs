@@ -25,7 +25,7 @@ namespace StreamDb.Internal.Core
         /// <summary> A magic number we use to recognise our database format </summary>
         [NotNull] public static readonly byte[] HEADER_MAGIC = { 0x55, 0xAA, 0xFE, 0xED, 0xFA, 0xCE, 0xDA, 0x7A };
 
-        private volatile ReverseTrie<SerialGuid> _pathLookupCache;
+        private volatile ReverseTrie<SerialGuid>? _pathLookupCache;
 
         public const int MAGIC_SIZE = 8;
         public const int HEADER_SIZE = (VersionedLink.ByteSize * 3) + MAGIC_SIZE;
@@ -135,7 +135,7 @@ namespace StreamDb.Internal.Core
         /// <summary>
         /// Read a page from the storage stream to memory. This will check the CRC.
         /// </summary>
-        [CanBeNull]public BasicPage GetRawPage(int pageId, bool ignoreCRC = false)
+        public BasicPage? GetRawPage(int pageId, bool ignoreCrc = false)
         {
             if (pageId < 0) return null;
             var result = new BasicPage(pageId);
@@ -144,7 +144,7 @@ namespace StreamDb.Internal.Core
                 _fs.Seek(HEADER_SIZE + (pageId * BasicPage.PageRawSize), SeekOrigin.Begin);
                 result.Defrost(_fs);
             }
-            if (!ignoreCRC && !result.ValidateCrc()) throw new Exception($"Reading page {pageId} failed CRC check");
+            if (!ignoreCrc && !result.ValidateCrc()) throw new Exception($"Reading page {pageId} failed CRC check");
             return result;
         }
 
@@ -303,7 +303,7 @@ namespace StreamDb.Internal.Core
                 indexSnap.Defrost(currentPage.BodyStream());
 
                 var found = indexSnap.Search(documentId, out var link);
-                if (found)
+                if (found && link != null)
                 {
                     if (link.TryGetLink(0, out var result)) return result;
                 }
@@ -337,8 +337,8 @@ namespace StreamDb.Internal.Core
                 }
 
                 // Bind the path
-                var sguid = pathIndex.Add(path, documentId);
-                if (sguid != null) previousDocId = sguid.Value;
+                var serialGuid = pathIndex.Add(path, documentId);
+                if (serialGuid != null) previousDocId = serialGuid.Value;
 
                 // Write back to new chain
                 var newPageId = WriteStream(pathIndex.Freeze());

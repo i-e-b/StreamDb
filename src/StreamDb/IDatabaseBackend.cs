@@ -72,7 +72,7 @@ namespace StreamDb
         /// Present a stream to read from a document, recovered by ID.
         /// Returns null if the document is not found.
         /// </summary>
-        Stream ReadDocument(Guid id);
+        Stream? ReadDocument(Guid id);
 
         // ############## Info ##############
         
