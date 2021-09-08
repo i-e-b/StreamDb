@@ -70,7 +70,35 @@ namespace StreamDb.Internal.Core
             indexVersion.Freeze().CopyTo(fs);
             pathLookupVersion.Freeze().CopyTo(fs);
             freeListVersion.Freeze().CopyTo(fs);
-            fs.Flush();
+            Flush(fs);
+        }
+
+        /// <summary>
+        /// Attempt to synchronously flush the underlying storage
+        /// </summary>
+        /// <remarks>The default file flush is essentially a no-op,
+        /// so we try to detect that case and force a to-disk flush.</remarks>
+        private void Flush()
+        {
+            if (_fs is FileStream file) {
+                file.Flush(true);
+            } else {
+                _fs.Flush();
+            }
+        }
+        
+        /// <summary>
+        /// Attempt to synchronously flush the underlying storage
+        /// </summary>
+        /// <remarks>The default file flush is essentially a no-op,
+        /// so we try to detect that case and force a to-disk flush.</remarks>
+        public static void Flush(Stream fs)
+        {
+            if (fs is FileStream file) {
+                file.Flush(true);
+            } else {
+                fs.Flush();
+            }
         }
 
         /// <summary>
@@ -169,7 +197,7 @@ namespace StreamDb.Internal.Core
             {
                 _fs.Seek(HEADER_SIZE + (pageId * BasicPage.PageRawSize), SeekOrigin.Begin);
                 _fs.Write(buffer, 0, buffer.Length);
-                _fs.Flush();
+                Flush();
             }
         }
         
@@ -245,7 +273,7 @@ namespace StreamDb.Internal.Core
                 // set new head link
                 indexLink.WriteNewLink(newPage.PageId, out _); // Index is always extended, we never clean it up
                 SetIndexPageLink(indexLink);
-                _fs.Flush();
+                Flush();
             }
         }
 
@@ -276,7 +304,7 @@ namespace StreamDb.Internal.Core
                         var stream = indexSnap.Freeze();
                         currentPage.Write(stream, 0, stream.Length);
                         CommitPage(currentPage);
-                        _fs.Flush();
+                        Flush();
                         return;
                     }
 
@@ -350,7 +378,7 @@ namespace StreamDb.Internal.Core
                 SetPathLookupLink(pathLink);
 
                 ReleaseChain(expired);
-                _fs.Flush();
+                Flush();
             }
         }
 
@@ -415,7 +443,7 @@ namespace StreamDb.Internal.Core
                 SetPathLookupLink(pathLink);
 
                 ReleaseChain(expired);
-                _fs.Flush();
+                Flush();
             }
         }
 
@@ -547,7 +575,7 @@ namespace StreamDb.Internal.Core
                     freeLink.WriteNewLink(slot[0], out _);
                     topPageId = slot[0];
                     SetFreeListLink(freeLink);
-                    _fs.Flush();
+                    Flush();
                 }
 
                 // Structure of free pages' data (see also `ReassignReleasedPages`)

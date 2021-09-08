@@ -59,7 +59,7 @@ namespace StreamDb
         /// <summary>
         /// Flush, close and dispose of the underlying stream.
         /// </summary>
-        public void Dispose() { _fs.Flush(); _fs.Dispose(); }
+        public void Dispose() { Flush(); _fs.Dispose(); }
 
         [NotNull]private readonly object _pathWriteLock = new object();
 
@@ -202,9 +202,15 @@ namespace StreamDb
         /// <summary>
         /// Attempt to synchronously flush the underlying storage
         /// </summary>
+        /// <remarks>The default file flush is essentially a no-op,
+        /// so we try to detect that case and force a to-disk flush.</remarks>
         public void Flush()
         {
-            _fs.Flush();
+            if (_fs is FileStream file) {
+                file.Flush(true);
+            } else {
+                _fs.Flush();
+            }
         }
 
         /// <summary>

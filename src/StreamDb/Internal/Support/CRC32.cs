@@ -31,9 +31,9 @@ namespace StreamDb.Internal.Support
         {
             if (buffer == null) return 0;
             var crc = DefaultSeed;
-            for (int i = 0; i < buffer.Length; i++)
+            foreach (var b in buffer)
             {
-                crc = (crc >> 8) ^ defaultTable[buffer[i] ^ (crc & 0xff)];
+                crc = (crc >> 8) ^ defaultTable[b ^ (crc & 0xff)];
             }
             return ~crc;
         }
