@@ -29,3 +29,9 @@ There is also a small WinForms app to explore StreamDB files created by other so
 * Be the fastest / smallest / anything-est.
 * Structure (de)serialisation. Users should provide byte streams, and will get byte streams back.
 
+## To-do / progress
+
+* [ ] Remove the special cases for index and free-list, make them a regular stream like the trie.
+* [ ] Remove the version request, replace with a 'prev' method.
+* [ ] Replace `lock` with non-recursive mutex calls (for portability)
+* [ ] Finish port to Golang
