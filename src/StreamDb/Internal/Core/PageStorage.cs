@@ -28,7 +28,6 @@ namespace StreamDb.Internal.Core
 
         public const int MAGIC_SIZE = 8;
         public const int HEADER_SIZE = (VersionedLink.ByteSize * 3) + MAGIC_SIZE;
-        public const int FREE_PAGE_SLOTS = 128;
         // ReSharper restore InconsistentNaming
         
         private volatile ReverseTrie<SerialGuid>? _pathLookupCache;
@@ -188,13 +187,13 @@ namespace StreamDb.Internal.Core
             var pageId = page.PageId;
             page.UpdateCRC();
 
-            var ms = new MemoryStream(BasicPage.PageRawSize);
-            page.Freeze().CopyTo(ms);
-            ms.Seek(0, SeekOrigin.Begin);
-            var buffer = ms.ToArray() ?? throw new Exception($"Failed to serialise page {pageId}");
-
             lock (_fslock)
             {
+                var ms = new MemoryStream(BasicPage.PageRawSize);
+                page.Freeze().CopyTo(ms);
+                ms.Seek(0, SeekOrigin.Begin);
+                var buffer = ms.ToArray() ?? throw new Exception($"Failed to serialise page {pageId}");
+
                 _fs.Seek(HEADER_SIZE + (pageId * BasicPage.PageRawSize), SeekOrigin.Begin);
                 _fs.Write(buffer, 0, buffer.Length);
                 Flush();

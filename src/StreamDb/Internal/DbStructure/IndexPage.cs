@@ -120,7 +120,7 @@ namespace StreamDb.Internal.DbStructure
             var index = Find(docId);
             if (index < 0 || index >= EntryCount) return false; // not found
             if (_docIds[index] == ZeroDocId) return false; // not found
-            if (_docIds[index] != docId) throw new Exception("IndexPage.Search: Logic error");
+            if (_docIds[index] != docId) throw new Exception("IndexPage.Remove: Logic error");
 
             _links[index] = new VersionedLink(); // entirely reset
             return true;

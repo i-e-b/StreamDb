@@ -79,7 +79,7 @@ namespace StreamDb.Internal.Support
 
         /// <summary>
         /// Add a path/value pair to the trie.
-        /// Value can be null. If an existing value was present, it is returned.
+        /// Value can not be null. If an existing value was present, it is returned.
         /// </summary>
         /// <param name="path">Complete path to use as a key to the value</param>
         /// <param name="value">Value to be stored on this path</param>

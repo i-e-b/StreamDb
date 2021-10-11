@@ -102,28 +102,31 @@ namespace StreamDb.Tests
             
             Console.WriteLine($"Storage after headers is {storage.Length} bytes");
 
-            var toRelease = new Queue<int>();
+            var toRelease = new Stack<int>();
 
             for (int i = 0; i < 3000; i++) // a free page can hold about 1020 page refs
             {
                 sampleDataStream.Seek(0, SeekOrigin.Begin);
-                toRelease.Enqueue(subject.WriteStream(sampleDataStream));
+                toRelease.Push(subject.WriteStream(sampleDataStream));
             }
 
             while (toRelease.Count > 0) {
-                subject.ReleaseChain(toRelease.Dequeue());
+                subject.ReleaseChain(toRelease.Pop());
             }
 
+            var beforeRefill = storage.Length;
             Console.WriteLine($"Storage after writing data is {storage.Length} bytes");
 
             // Try to reuse the pages
             for (int i = 0; i < 3000; i++)
             {
                 sampleDataStream.Seek(0, SeekOrigin.Begin);
-                toRelease.Enqueue(subject.WriteStream(sampleDataStream));
+                toRelease.Push(subject.WriteStream(sampleDataStream));
             }
 
+            var afterRefill = storage.Length;
             Console.WriteLine($"Storage after re-writing data is {storage.Length} bytes");
+            Assert.That(beforeRefill, Is.EqualTo(afterRefill), "Storage did not re-use pages correctly?");
         }
 
         [Test]

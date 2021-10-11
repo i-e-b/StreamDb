@@ -210,7 +210,12 @@ namespace StreamDb.Internal.DbStructure
             _data[baseAddr + 3] = (byte) ((value >> 0) & 0xff);
         }
 
-        private int ReadInt32(int baseAddr) { return (_data[baseAddr + 0] << 24) + (_data[baseAddr + 1] << 16) + (_data[baseAddr + 2] << 8) + (_data[baseAddr + 3] << 0); }
+        private int ReadInt32(int baseAddr) {
+            return (_data[baseAddr + 0] << 24) +
+                   (_data[baseAddr + 1] << 16) +
+                   (_data[baseAddr + 2] << 8) +
+                   (_data[baseAddr + 3] << 0);
+        }
 
         /// <summary>
         /// Treat the page data as an array of Int32. Read from an index
