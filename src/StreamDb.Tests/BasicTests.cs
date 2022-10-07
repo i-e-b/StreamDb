@@ -7,11 +7,16 @@ using StreamDb.Tests.Helpers;
 
 // ReSharper disable PossibleNullReferenceException
 
+
 namespace StreamDb.Tests
 {
     [TestFixture]
     public class BasicTests
     {
+
+    const string TempPath = @"StreamDBTest.dat"; // Linux
+    //const string TempPath = @"C:\Temp\StreamDBTest.dat"; // Windows
+
         [Test]
         public void can_create_a_new_blank_database_in_a_stream_and_use_it (){
             using (var ms = new MemoryStream())
@@ -55,7 +60,7 @@ namespace StreamDb.Tests
         [Test, Repeat(2)]
         public void can_create_a_database_with_a_file_stream ()
         {
-            using (var fs = File.Open(@"C:\Temp\StreamDBTest.dat", FileMode.Truncate, FileAccess.ReadWrite, FileShare.None))
+            using (var fs = File.Open(TempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
             using (var db = Database.TryConnect(fs))
             {
 
@@ -86,7 +91,7 @@ namespace StreamDb.Tests
             // We should be able to access the stored DB
             
             // We expect write operations to fail, but should be able to full access all data.
-            using (var fs = File.Open(@"C:\Temp\StreamDBTest.dat", FileMode.Open, FileAccess.Read, FileShare.None))
+            using (var fs = File.Open(TempPath, FileMode.Open, FileAccess.Read, FileShare.None))
             using (var db = Database.TryConnect(fs))
             {
 
@@ -101,7 +106,7 @@ namespace StreamDb.Tests
         [Test]
         public void z_can_open_an_existing_database_from_a_file_stream()
         {
-            using (var fs = File.Open(@"C:\Temp\StreamDBTest.dat", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            using (var fs = File.Open(TempPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
             using (var db = Database.TryConnect(fs))
             {
 
@@ -118,7 +123,7 @@ namespace StreamDb.Tests
         public void database_can_be_accessed_with_a_readonly_stream ()
         {
             // We expect write operations to fail, but should be able to full access all data.
-            using (var fs = File.Open(@"C:\Temp\StreamDBTest.dat", FileMode.Open, FileAccess.Read, FileShare.None))
+            using (var fs = File.Open(TempPath, FileMode.Open, FileAccess.Read, FileShare.None))
             using (var db = Database.TryConnect(fs))
             {
 
