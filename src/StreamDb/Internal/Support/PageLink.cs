@@ -20,6 +20,9 @@ namespace StreamDb.Internal.Support
         /// </summary>
         public int PageId { get; set; }
 
+        /// <summary>
+        /// Create new link at first version
+        /// </summary>
         public PageLink() { Version = new MonotonicByte(); }
 
         /// <summary>

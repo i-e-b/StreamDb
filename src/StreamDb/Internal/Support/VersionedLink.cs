@@ -11,12 +11,18 @@ namespace StreamDb.Internal.Support
         [NotNull] private PageLink _linkA;
         [NotNull] private PageLink _linkB;
 
+        /// <summary>
+        /// Create a new versioned link
+        /// </summary>
         public VersionedLink()
         {
             _linkA = PageLink.InvalidLink();
             _linkB = PageLink.InvalidLink();
         }
 
+        /// <summary>
+        /// Size of this object when serialised
+        /// </summary>
         public const int ByteSize = 10;
 
         // Clumsy lock. Need to integrate read/write and update to improve
@@ -54,6 +60,9 @@ namespace StreamDb.Internal.Support
             }
         }
 
+        /// <summary>
+        /// Update a link, giving the id of a page that might have been expired
+        /// </summary>
         public void WriteNewLink(int pageId, out int expiredPage) {
             lock (_lock)
             {

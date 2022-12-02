@@ -18,7 +18,10 @@ namespace StreamDb.Internal.Search
         // http://programmerspatch.blogspot.com/2013/02/ukkonens-suffix-tree-algorithm.html
         // http://brenden.github.io/ukkonen-animation/
 
-        public const int Infinity = 1 << 29; // Special value marking 'until end', sometimes '#' in papers.
+        /// <summary>
+        /// Special value marking 'until end', sometimes '#' in papers.
+        /// </summary>
+        public const int Infinity = 1 << 29;
 
         readonly int _root;
         int _pos, _needSLink, _remainder, _activeNode, _activeEdge, _activeLength;
@@ -344,8 +347,8 @@ namespace StreamDb.Internal.Search
             return true;
         }
 
-        
-        public class SuffixNode {
+
+        private class SuffixNode {
             public int Start;
             public int End;
             public int SuffixLink;

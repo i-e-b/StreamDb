@@ -14,6 +14,9 @@ namespace StreamDb.Internal.Support
         private byte readMask, writeMask;
         private int nextOut, currentIn;
 
+        /// <summary>
+        /// Create a bitwise reader over a stream
+        /// </summary>
         public BitwiseStreamWrapper(Stream original, int runoutBits)
         {
             _original = original ?? throw new Exception("Must not wrap a null stream");

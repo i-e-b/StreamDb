@@ -89,8 +89,11 @@ namespace StreamDb.Internal.DbStructure
         /// </summary>
         public int PageId { get; set; }
 
-        [NotNull] protected internal readonly byte[] _data;
+        [NotNull] private readonly byte[] _data;
 
+        /// <summary>
+        /// Create a new basic page
+        /// </summary>
         public BasicPage(int pageId) { 
             _data = new byte[PageRawSize];
             PageId = pageId;
@@ -123,7 +126,9 @@ namespace StreamDb.Internal.DbStructure
             return (int)full;
         }
 
-        
+        /// <summary>
+        /// Update the page CRC to current content
+        /// </summary>
         public void UpdateCRC()
         {
             // We calculate the entire page (headers + data), but with the CRC field zeroed.
@@ -131,6 +136,9 @@ namespace StreamDb.Internal.DbStructure
             CrcHash = Crc32.Compute(_data);
         }
 
+        /// <summary>
+        /// Check that CRC and content match
+        /// </summary>
         public bool ValidateCrc()
         {
             if (QuickAndDirtyMode) return true;
@@ -250,6 +258,9 @@ namespace StreamDb.Internal.DbStructure
             }
         }
 
+        /// <summary>
+        /// Get stream interface over the page body
+        /// </summary>
         [NotNull]public Stream BodyStream()
         {
             return new SimplePageStreamWrapper(this);
@@ -263,6 +274,11 @@ namespace StreamDb.Internal.DbStructure
         {
             [NotNull] private readonly BasicPage _src;
 
+            /// <summary>
+            /// Create a stream wrapper over a basic page
+            /// </summary>
+            /// <param name="src"></param>
+            /// <exception cref="Exception"></exception>
             public SimplePageStreamWrapper(BasicPage src)
             {
                 _src = src ?? throw new Exception("Page stream wrapper must not be created with a null page");
@@ -304,15 +320,40 @@ namespace StreamDb.Internal.DbStructure
                 }
             }
 
+            /// <summary>
+            /// Stream read head position
+            /// </summary>
             public override long Position { get; set; }
 
+            /// <summary>
+            /// Not permitted
+            /// </summary>
             public override void SetLength(long value){ throw new InvalidOperationException("Page body stream is read only"); }
+            
+            /// <summary>
+            /// Not permitted
+            /// </summary>
             public override void Write(byte[] buffer, int offset, int count) { throw new InvalidOperationException("Page body stream is read only"); }
 
+            /// <summary>
+            /// True
+            /// </summary>
             public override bool CanRead => true;
+            /// <summary>
+            /// True
+            /// </summary>
             public override bool CanSeek => true;
+            /// <summary>
+            /// False
+            /// </summary>
             public override bool CanWrite => false;
+            /// <summary>
+            /// Length of data
+            /// </summary>
             public override long Length => _src.DataLength;
+            /// <summary>
+            /// No-op
+            /// </summary>
             public override void Flush() { }
         }
     }

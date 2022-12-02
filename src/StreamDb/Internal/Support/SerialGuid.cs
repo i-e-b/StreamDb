@@ -3,13 +3,34 @@ using System.IO;
 
 namespace StreamDb.Internal.Support
 {
+    /// <summary>
+    /// GUID that is stream serialisable and ordered
+    /// </summary>
     public class SerialGuid : PartiallyOrdered, IStreamSerialisable {
+        /// <summary>
+        /// GUID value
+        /// </summary>
         public Guid Value;
+        /// <summary>
+        /// Wrap a guid in an orderable serialiser
+        /// </summary>
         public static SerialGuid Wrap(Guid g) { return new SerialGuid { Value = g }; }
         
+        /// <summary>
+        /// Implicit conversion
+        /// </summary>
         public static implicit operator SerialGuid(Guid other){ return Wrap(other); }
+        /// <summary>
+        /// Explicit conversion
+        /// </summary>
         public static explicit operator Guid(SerialGuid? other){ return other?.Value ?? Guid.Empty; }
+        /// <summary>
+        /// Serialise to a stream
+        /// </summary>
         public Stream Freeze() { return new MemoryStream(Value.ToByteArray()); }
+        /// <summary>
+        /// Recover from a stream
+        /// </summary>
         public void Defrost(Stream source)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));

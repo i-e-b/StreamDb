@@ -26,12 +26,16 @@ namespace StreamDb.Internal.Core
         /// <summary> A magic number we use to recognise our database format </summary>
         [NotNull] public static readonly byte[] HEADER_MAGIC = { 0x55, 0xAA, 0xFE, 0xED, 0xFA, 0xCE, 0xDA, 0x7A };
 
-        public const int MAGIC_SIZE = 8;
-        public const int HEADER_SIZE = (VersionedLink.ByteSize * 3) + MAGIC_SIZE;
+        private const int MAGIC_SIZE = 8;
+
+        private const int HEADER_SIZE = (VersionedLink.ByteSize * 3) + MAGIC_SIZE;
         // ReSharper restore InconsistentNaming
         
         private volatile ReverseTrie<SerialGuid>? _pathLookupCache;
 
+        /// <summary>
+        /// Create a new page storage over a stream
+        /// </summary>
         public PageStorage([NotNull]Stream fs)
         {
             _fs = fs;
@@ -54,6 +58,9 @@ namespace StreamDb.Internal.Core
             }
         }
 
+        /// <summary>
+        /// Prepare a database for use
+        /// </summary>
         public static void InitialiseDb([NotNull]Stream fs)
         {
             if (!fs.CanWrite) throw new Exception("Tried to initialise a read-only stream");

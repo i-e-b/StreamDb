@@ -3,10 +3,16 @@ using System.IO;
 
 namespace StreamDb.Internal.Support
 {
+    /// <summary>
+    /// Monotonic counter in a single byte
+    /// </summary>
     public struct MonotonicByte :  IStreamSerialisable {
 
         private byte _value;
 
+        /// <summary>
+        /// Current counter value
+        /// </summary>
         public int Value { get { return _value; } }
 
         /// <summary> Start a new counter with a given value </summary>
@@ -47,6 +53,9 @@ namespace StreamDb.Internal.Support
             return (obj is MonotonicByte other) && (CompareTo(this, other) == 0);
         }
 
+        /// <summary>
+        /// Compare to another object
+        /// </summary>
         public int CompareTo(object obj)
         {
             if (ReferenceEquals(null, obj)) return 1;
@@ -60,6 +69,9 @@ namespace StreamDb.Internal.Support
             return (diff > 63) ? 1 - native : native;
         }
 
+        /// <summary>
+        /// Get hashcode for this counter
+        /// </summary>
         public override int GetHashCode() { return 0x1437584b; }
 
         /// <summary>

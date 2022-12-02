@@ -97,6 +97,9 @@ namespace StreamDb.Internal.Support
             set { _parent.Position = value + _startPosition; }
         }
 
+        /// <summary>
+        /// Size of data that can be read
+        /// </summary>
         public long AvailableData()
         {
             return _endPosition - _startPosition;

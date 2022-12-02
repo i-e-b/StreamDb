@@ -8,10 +8,23 @@ using StreamDb.Internal.Search;
 
 namespace StreamDb.Internal.Support
 {
+    /// <summary>
+    /// Create a path trie with backward-pointing links
+    /// </summary>
+    /// <typeparam name="TValue"></typeparam>
     public class ReverseTrie<TValue> : IStreamSerialisable where TValue : class, IStreamSerialisable, new()
     {
+        /// <summary>
+        /// Node in the reverse trie
+        /// </summary>
         public class RtNode : PartiallyOrdered {
+            /// <summary>
+            /// Value
+            /// </summary>
             public readonly char Value;
+            /// <summary>
+            /// Parent node
+            /// </summary>
             public readonly int Parent;
 
             /// <summary>This is set during storage to help lookups </summary>
@@ -22,11 +35,19 @@ namespace StreamDb.Internal.Support
             /// </summary>
             public TValue? Data;
 
+            /// <summary>
+            /// Create a new node
+            /// </summary>
+            /// <param name="value"></param>
+            /// <param name="parent"></param>
             public RtNode(char value, int parent) {
                 Value = value;
                 Parent = parent;
             }
 
+            /// <summary>
+            /// Add a node to the trie
+            /// </summary>
             public static int AddNewNode(char value, int parent, List<RtNode> target) {
                 if (target == null) throw new Exception("Can't add a node to a null target");
                 lock (target)
@@ -68,6 +89,9 @@ namespace StreamDb.Internal.Support
         /// </summary>
         [NotNull]private readonly Dictionary<TValue, HashSet<int>> _valueCache;
 
+        /// <summary>
+        /// Create a new trie instance
+        /// </summary>
         public ReverseTrie()
         {
             _store = new List<RtNode>();

@@ -33,6 +33,9 @@ namespace StreamDb.Internal.DbStructure
 
         */
 
+        /// <summary>
+        /// Create an index page
+        /// </summary>
         public IndexPage()
         {
             _links = new VersionedLink[EntryCount];

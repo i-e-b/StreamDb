@@ -28,8 +28,15 @@ namespace StreamDb.Internal.DbStructure
     public class FreeListPage: IStreamSerialisable
     {
         [NotNull]private readonly int[] _entries;
+        
+        /// <summary>
+        /// Capacity of a single page in `int`s
+        /// </summary>
         public const int Capacity = BasicPage.PageDataCapacity / sizeof(int);
 
+        /// <summary>
+        /// Create a new free list page
+        /// </summary>
         public FreeListPage()
         {
             _entries = new int[Capacity];

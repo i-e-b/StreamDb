@@ -20,6 +20,9 @@ namespace StreamDb.Internal.Core
         private long _length;
         private bool _cached;
 
+        /// <summary>
+        /// Create a new data reader
+        /// </summary>
         public SimplePageStream([NotNull]PageStorage parent, int endPageId)
         {
             _cached = false;

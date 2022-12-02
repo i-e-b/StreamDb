@@ -2,10 +2,13 @@
 
 namespace StreamDb.Internal.Support
 {
+    /// <summary>
+    /// CRC32 checksum
+    /// </summary>
     public static class Crc32
     {
-        public const uint DefaultPolynomial = 0xedb88320;
-        public const uint DefaultSeed = 0xffffffff;
+        private const uint DefaultPolynomial = 0xedb88320;
+        private const uint DefaultSeed = 0xffffffff;
 
         [NotNull]private static readonly uint[] defaultTable;
 

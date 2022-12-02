@@ -5,6 +5,9 @@ using JetBrains.Annotations;
 
 namespace StreamDb
 {
+    /// <summary>
+    /// Interface to the low-level database commands
+    /// </summary>
     public interface IDatabaseBackend
     {
         // ############## Write ##############
